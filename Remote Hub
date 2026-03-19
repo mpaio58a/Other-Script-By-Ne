@@ -365,7 +365,7 @@ table.insert(connections, game.DescendantAdded:Connect(function(obj)
 end))
 
 -- ======================================================================
--- [ RIGHT GROUPBOX: REMOTE PLAYER ]
+-- [ RIGHT GROUPBOX: REMOTE PLAYER (FIXED BUGS & NO CRASH) ]
 -- ======================================================================
 local PlayerRemoteGroupbox = Tabs.Remote:AddRightGroupbox("Player Remotes")
 
@@ -375,26 +375,23 @@ PlayerRemoteGroupbox:AddDropdown("SelectedPlayerScanner", {
     Tooltip = "เลือกผู้เล่นเพื่อเจาะหา Remote",
 })
 
--- ฟังก์ชันล้างข้อมูล UI แบบสมบูรณ์ (ไม่ทำให้ UI พัง)
 local function clearPlayerRemotesUI()
     for _, data in ipairs(currentPlayerUIRegistry) do
         pcall(function()
-            -- 1. ทำลายกรอบของปุ่ม และ ป้ายชื่อ (Label/Button)
-            if data.obj and type(data.obj) == "table" then
-                if data.obj.Container then data.obj.Container:Destroy() end
-                if data.obj.Frame then data.obj.Frame:Destroy() end
+            -- ใช้คำสั่งซ่อนที่เป็นของ Library โดยตรง จะได้ไม่รวน
+            if data.id and Options[data.id] then
+                if Options[data.id].SetVisible then Options[data.id]:SetVisible(false) end
+                Options[data.id] = nil
             end
             
-            -- 2. ทำลายกรอบของกล่องข้อความ (Input) และล้างข้อมูลในระบบ
-            if data.id and Options[data.id] then
-                if Options[data.id].Container then Options[data.id].Container:Destroy() end
-                if Options[data.id].Frame then Options[data.id].Frame:Destroy() end
-                Options[data.id] = nil -- คืนพื้นที่หน่วยความจำ
+            if data.obj and type(data.obj) == "table" then
+                if data.obj.SetVisible then data.obj:SetVisible(false) end
+                -- สำหรับพวก Label และ Divider ที่ไม่มี SetVisible ให้ลบข้อความทิ้งไปเลย
+                if data.obj.SetText then data.obj:SetText("") end
             end
         end)
     end
     
-    -- ล้างตารางข้อมูลให้ว่างเปล่าเตรียมรับการแสกนครั้งต่อไป
     currentPlayerUIRegistry = {}
     playerRemoteElements = {} 
 end
@@ -405,7 +402,6 @@ PlayerRemoteGroupbox:AddButton({
         local targetValue = Options.SelectedPlayerScanner.Value
         local targetName = ""
         
-        -- ดักไว้เผื่อ UI Library คืนค่ามาเป็น Table หรือรูปแบบอื่น
         if type(targetValue) == "table" then
             for k, v in pairs(targetValue) do
                 if v then targetName = tostring(k); break end
@@ -420,12 +416,8 @@ PlayerRemoteGroupbox:AddButton({
         end
         
         local targetPlr = nil
-        -- ค้นหาผู้เล่นจากทั้ง Username และ DisplayName เพื่อความชัวร์ 100%
         for _, p in ipairs(Players:GetPlayers()) do
-            if p.Name == targetName or p.DisplayName == targetName then
-                targetPlr = p
-                break
-            end
+            if p.Name == targetName or p.DisplayName == targetName then targetPlr = p break end
         end
         
         if not targetPlr then 
@@ -433,13 +425,12 @@ PlayerRemoteGroupbox:AddButton({
             return 
         end
         
-        -- ล้าง UI ของคนเก่าออกก่อน
+        -- ล้างซากเก่าทิ้งแบบนุ่มนวล
         clearPlayerRemotesUI()
         
         local playerRemotes = {}
         local foundMap = {}
         
-        -- หาจาก Object Player (เช่น Backpack, PlayerGui, PlayerScripts)
         for _, obj in ipairs(targetPlr:GetDescendants()) do
             if obj:IsA("RemoteEvent") and not foundMap[obj] then
                 foundMap[obj] = true
@@ -447,7 +438,6 @@ PlayerRemoteGroupbox:AddButton({
             end
         end
         
-        -- หาจาก Character (ตัวละครที่เดินอยู่)
         if targetPlr.Character then
             for _, obj in ipairs(targetPlr.Character:GetDescendants()) do
                 if obj:IsA("RemoteEvent") and not foundMap[obj] then
@@ -457,7 +447,6 @@ PlayerRemoteGroupbox:AddButton({
             end
         end
         
-        -- เรียงลำดับ A-Z จาก Source
         table.sort(playerRemotes, function(a, b)
             local sourceA = getFirstNodeName(a):lower()
             local sourceB = getFirstNodeName(b):lower()
@@ -465,7 +454,6 @@ PlayerRemoteGroupbox:AddButton({
             return sourceA < sourceB
         end)
         
-        -- สร้าง UI ชุดใหม่สำหรับผู้เล่นคนนี้
         for _, obj in ipairs(playerRemotes) do
             generateRemoteUI(obj, PlayerRemoteGroupbox, playerRemoteElements, currentPlayerUIRegistry, "P_")
         end
@@ -473,8 +461,9 @@ PlayerRemoteGroupbox:AddButton({
         Library:Notify("✅ Scanned " .. targetPlr.Name .. " - Found " .. #playerRemotes .. " remotes.")
     end
 })
-  
-                                                       
+
+PlayerRemoteGroupbox:AddLabel("D_Player", {Text = "▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬"})
+                                            
 -- ======================================================================
 -- [ TAB: MISC (ESP & AIMBOT) ]
 -- ======================================================================
