@@ -365,9 +365,12 @@ table.insert(connections, game.DescendantAdded:Connect(function(obj)
 end))
 
 -- ======================================================================
--- [ RIGHT GROUPBOX: REMOTE PLAYER (SUPER SAFE VERSION) ]
+-- [ RIGHT GROUPBOX: REMOTE PLAYER (REDESIGNED - BUG FREE 100%) ]
 -- ======================================================================
 local PlayerRemoteGroupbox = Tabs.Remote:AddRightGroupbox("Player Remotes")
+
+-- ตารางเก็บข้อมูล Remote ที่สแกนเจอ
+local ScannedPlayerRemotesMap = {}
 
 PlayerRemoteGroupbox:AddDropdown("SelectedPlayerScanner", {
     SpecialType = "Player",
@@ -375,103 +378,127 @@ PlayerRemoteGroupbox:AddDropdown("SelectedPlayerScanner", {
     Tooltip = "เลือกผู้เล่นเพื่อเจาะหา Remote",
 })
 
--- ฟังก์ชันล้าง UI ที่ปลอดภัยที่สุด (ใช้ pcall กันสคริปต์พังทุกจุด)
-local function clearPlayerRemotesUI()
-    pcall(function()
-        for _, data in ipairs(currentPlayerUIRegistry) do
-            pcall(function()
-                if data.id and Options[data.id] then
-                    if type(Options[data.id]) == "table" and Options[data.id].SetVisible then
-                        Options[data.id]:SetVisible(false)
-                    end
-                end
-                if data.obj and type(data.obj) == "table" then
-                    if data.obj.SetVisible then data.obj:SetVisible(false) end
-                    if data.obj.SetText then data.obj:SetText("") end
-                end
-            end)
-        end
-    end)
-    currentPlayerUIRegistry = {}
-    playerRemoteElements = {} 
-end
-
 PlayerRemoteGroupbox:AddButton({
     Text = "🔍 Scan Player Remotes",
     Func = function()
-        -- ใช้ pcall ครอบการทำงานทั้งหมด ถ้ามีอะไรพัง มันจะแจ้งเตือนแทนที่จะเงียบไปเลย
-        local success, err = pcall(function()
-            local targetValue = Options.SelectedPlayerScanner.Value
-            local targetName = tostring(targetValue or "")
-            
-            -- ลบช่องว่างส่วนเกินเผื่อไว้
-            targetName = targetName:match("^%s*(.-)%s*$")
-
-            if targetName == "" or targetName == "nil" then 
-                Library:Notify("⚠️ Please select a player from the dropdown!")
-                return 
-            end
-            
-            local targetPlr = nil
+        local targetValue = Options.SelectedPlayerScanner.Value
+        local targetName = type(targetValue) == "table" and next(targetValue) or tostring(targetValue)
+        
+        if not targetName or targetName == "" or targetName == "nil" then 
+            Library:Notify("⚠️ Please select a player first!") return 
+        end
+        
+        local targetPlr = Players:FindFirstChild(targetName)
+        if not targetPlr then 
             for _, p in ipairs(Players:GetPlayers()) do
-                if p.Name == targetName or p.DisplayName == targetName then 
-                    targetPlr = p 
-                    break 
-                end
+                if p.DisplayName == targetName then targetPlr = p break end
             end
-            
-            if not targetPlr then 
-                Library:Notify("❌ Player '" .. targetName .. "' not found.")
-                return 
-            end
-
-            Library:Notify("⏳ Scanning " .. targetPlr.Name .. "...")
-            
-            clearPlayerRemotesUI()
-            
-            local playerRemotes = {}
-            local foundMap = {}
-            
-            -- หาใน Backpack, PlayerGui ฯลฯ
-            for _, obj in ipairs(targetPlr:GetDescendants()) do
+        end
+        if not targetPlr then Library:Notify("❌ Player not found.") return end
+        
+        local foundMap = {}
+        local tempList = {}
+        
+        -- ค้นหา Remote
+        local function scanObj(parent)
+            if not parent then return end
+            for _, obj in ipairs(parent:GetDescendants()) do
                 if obj:IsA("RemoteEvent") and not foundMap[obj] then
                     foundMap[obj] = true
-                    table.insert(playerRemotes, obj)
+                    table.insert(tempList, obj)
                 end
             end
-            
-            -- หาใน Character
-            if targetPlr.Character then
-                for _, obj in ipairs(targetPlr.Character:GetDescendants()) do
-                    if obj:IsA("RemoteEvent") and not foundMap[obj] then
-                        foundMap[obj] = true
-                        table.insert(playerRemotes, obj)
-                    end
-                end
-            end
-            
-            table.sort(playerRemotes, function(a, b)
-                local sourceA = getFirstNodeName(a):lower()
-                local sourceB = getFirstNodeName(b):lower()
-                if sourceA == sourceB then return a.Name:lower() < b.Name:lower() end
-                return sourceA < sourceB
-            end)
-            
-            for _, obj in ipairs(playerRemotes) do
-                generateRemoteUI(obj, PlayerRemoteGroupbox, playerRemoteElements, currentPlayerUIRegistry, "P_")
-            end
-            
-            Library:Notify("✅ Found " .. #playerRemotes .. " remotes for " .. targetPlr.Name)
+        end
+        
+        scanObj(targetPlr)
+        scanObj(targetPlr.Character)
+        
+        -- เรียง A-Z
+        table.sort(tempList, function(a, b)
+            local sa = getFirstNodeName(a):lower()
+            local sb = getFirstNodeName(b):lower()
+            return sa == sb and a.Name:lower() < b.Name:lower() or sa < sb
         end)
-
-        -- ถ้าเกิดบั๊กที่ไม่คาดคิด มันจะแจ้งเป็นตัวหนังสือสีแดงให้เรารู้
-        if not success then
-            Library:Notify("🚨 Error: " .. tostring(err))
+        
+        -- นำชื่อเข้า Dropdown
+        ScannedPlayerRemotesMap = {}
+        local dropdownNames = {}
+        
+        for _, obj in ipairs(tempList) do
+            local pathName = getRemotePathText(obj)
+            -- ป้องกันชื่อซ้ำใน Dropdown
+            if not ScannedPlayerRemotesMap[pathName] then
+                table.insert(dropdownNames, pathName)
+                ScannedPlayerRemotesMap[pathName] = obj
+            end
+        end
+        
+        if #dropdownNames == 0 then
+            Library:Notify("⚠️ No remotes found in " .. targetPlr.Name)
+            Options.SelectedPlayerRemote:SetValues({"No Remotes Found"})
+            Options.SelectedPlayerRemote:SetValue("No Remotes Found")
+        else
+            Options.SelectedPlayerRemote:SetValues(dropdownNames)
+            Options.SelectedPlayerRemote:SetValue(dropdownNames[1])
+            Library:Notify("✅ Found " .. #dropdownNames .. " remotes!")
         end
     end
 })
 
-PlayerRemoteGroupbox:AddLabel("D_Player", {Text = "▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬"})
+PlayerRemoteGroupbox:AddDivider()
+
+-- Dropdown สำหรับเลือกรีโมทที่จะยิง (แทนการเสกปุ่มยาวๆ)
+PlayerRemoteGroupbox:AddDropdown("SelectedPlayerRemote", {
+    Text = "Select Remote",
+    Values = {"Scan a player first..."},
+    Default = 1,
+})
+
+PlayerRemoteGroupbox:AddInput("PlayerRemoteAmount", { 
+    Default = "1", Numeric = true, Finished = false, Text = "Amount to Fire" 
+})
+
+PlayerRemoteGroupbox:AddButton({ 
+    Text = "Execute Selected", 
+    Func = function()
+        local selected = Options.SelectedPlayerRemote.Value
+        if ScannedPlayerRemotesMap and ScannedPlayerRemotesMap[selected] then
+            local remote = ScannedPlayerRemotesMap[selected]
+            local amt = tonumber(Options.PlayerRemoteAmount.Value) or 1
+            for i = 1, amt do pcall(function() remote:FireServer() end) end
+        else
+            Library:Notify("⚠️ Please select a valid remote.")
+        end
+    end 
+})
+
+PlayerRemoteGroupbox:AddButton({ 
+    Text = "Add Button On Screen", 
+    Func = function()
+        local selected = Options.SelectedPlayerRemote.Value
+        if ScannedPlayerRemotesMap and ScannedPlayerRemotesMap[selected] then
+            local remote = ScannedPlayerRemotesMap[selected]
+            createOnScreenButton(remote, "PlayerRemoteAmount", remote.Name)
+        end
+    end 
+})
+
+PlayerRemoteGroupbox:AddDivider()
+
+PlayerRemoteGroupbox:AddInput("PlayerRemoteDelay", { 
+    Default = "0.1", Numeric = true, Finished = false, Text = "Spam Delay (Speed)" 
+})
+
+PlayerRemoteGroupbox:AddButton({ 
+    Text = "Add Float Toggle Button", 
+    Func = function()
+        local selected = Options.SelectedPlayerRemote.Value
+        if ScannedPlayerRemotesMap and ScannedPlayerRemotesMap[selected] then
+            local remote = ScannedPlayerRemotesMap[selected]
+            createOnScreenToggleButton(remote, "PlayerRemoteDelay", remote.Name)
+        end
+    end 
+})
               
 -- ======================================================================
 -- [ TAB: MISC (ESP & AIMBOT) ]
