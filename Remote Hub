@@ -375,18 +375,34 @@ PlayerRemoteGroupbox:AddDropdown("SelectedPlayerScanner", {
     Tooltip = "เลือกผู้เล่นเพื่อเจาะหา Remote",
 })
 
-local currentPlayerUIRegistry = {}
-
+-- ฟังก์ชัน "ลบแบบถอนรากถอนโคน" (ทำลาย GUI ทิ้งไปเลย จะได้ไม่เหลือซากขีดหรือชื่อเก่า)
 local function clearPlayerRemotesUI()
-    for _, item in ipairs(currentPlayerUIRegistry) do
-        if item.type == "Option" and Options[item.id] then
-            Options[item.id]:SetVisible(false)
-        elseif item.type == "Button" and item.obj then
-            item.obj:SetVisible(false)
-        end
+    for _, data in ipairs(currentPlayerUIRegistry) do
+        pcall(function()
+            -- 1. ทำลายออบเจกต์ทั่วไป (ปุ่ม, ป้ายชื่อ, ขีด)
+            if data.obj and type(data.obj) == "table" then
+                for _, v in pairs(data.obj) do
+                    if typeof(v) == "Instance" then 
+                        pcall(function() v:Destroy() end) 
+                    end
+                end
+            end
+            
+            -- 2. ทำลายกล่องข้อความ (Textbox) และลบข้อมูลออกจาก Library Memory
+            if data.id and Options[data.id] then
+                for _, v in pairs(Options[data.id]) do
+                    if typeof(v) == "Instance" then 
+                        pcall(function() v:Destroy() end) 
+                    end
+                end
+                Options[data.id] = nil -- ลบทิ้งจากระบบจะได้ไม่รกความจำ
+            end
+        end)
     end
+    
+    -- ล้างตารางข้อมูลให้ว่างเปล่าเตรียมรับของคนใหม่
     currentPlayerUIRegistry = {}
-    playerRemoteElements = {} -- ล้างข้อมูล Setting ด้วย
+    playerRemoteElements = {} 
 end
 
 PlayerRemoteGroupbox:AddButton({
