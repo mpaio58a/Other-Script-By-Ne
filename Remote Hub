@@ -365,7 +365,7 @@ table.insert(connections, game.DescendantAdded:Connect(function(obj)
 end))
 
 -- ======================================================================
--- [ RIGHT GROUPBOX: REMOTE PLAYER (FIXED BUGS & NO CRASH) ]
+-- [ RIGHT GROUPBOX: REMOTE PLAYER (SUPER SAFE VERSION) ]
 -- ======================================================================
 local PlayerRemoteGroupbox = Tabs.Remote:AddRightGroupbox("Player Remotes")
 
@@ -375,23 +375,23 @@ PlayerRemoteGroupbox:AddDropdown("SelectedPlayerScanner", {
     Tooltip = "เลือกผู้เล่นเพื่อเจาะหา Remote",
 })
 
+-- ฟังก์ชันล้าง UI ที่ปลอดภัยที่สุด (ใช้ pcall กันสคริปต์พังทุกจุด)
 local function clearPlayerRemotesUI()
-    for _, data in ipairs(currentPlayerUIRegistry) do
-        pcall(function()
-            -- ใช้คำสั่งซ่อนที่เป็นของ Library โดยตรง จะได้ไม่รวน
-            if data.id and Options[data.id] then
-                if Options[data.id].SetVisible then Options[data.id]:SetVisible(false) end
-                Options[data.id] = nil
-            end
-            
-            if data.obj and type(data.obj) == "table" then
-                if data.obj.SetVisible then data.obj:SetVisible(false) end
-                -- สำหรับพวก Label และ Divider ที่ไม่มี SetVisible ให้ลบข้อความทิ้งไปเลย
-                if data.obj.SetText then data.obj:SetText("") end
-            end
-        end)
-    end
-    
+    pcall(function()
+        for _, data in ipairs(currentPlayerUIRegistry) do
+            pcall(function()
+                if data.id and Options[data.id] then
+                    if type(Options[data.id]) == "table" and Options[data.id].SetVisible then
+                        Options[data.id]:SetVisible(false)
+                    end
+                end
+                if data.obj and type(data.obj) == "table" then
+                    if data.obj.SetVisible then data.obj:SetVisible(false) end
+                    if data.obj.SetText then data.obj:SetText("") end
+                end
+            end)
+        end
+    end)
     currentPlayerUIRegistry = {}
     playerRemoteElements = {} 
 end
@@ -399,71 +399,80 @@ end
 PlayerRemoteGroupbox:AddButton({
     Text = "🔍 Scan Player Remotes",
     Func = function()
-        local targetValue = Options.SelectedPlayerScanner.Value
-        local targetName = ""
-        
-        if type(targetValue) == "table" then
-            for k, v in pairs(targetValue) do
-                if v then targetName = tostring(k); break end
-            end
-        else
-            targetName = tostring(targetValue)
-        end
+        -- ใช้ pcall ครอบการทำงานทั้งหมด ถ้ามีอะไรพัง มันจะแจ้งเตือนแทนที่จะเงียบไปเลย
+        local success, err = pcall(function()
+            local targetValue = Options.SelectedPlayerScanner.Value
+            local targetName = tostring(targetValue or "")
+            
+            -- ลบช่องว่างส่วนเกินเผื่อไว้
+            targetName = targetName:match("^%s*(.-)%s*$")
 
-        if not targetName or targetName == "" or targetName == "nil" then 
-            Library:Notify("⚠️ Please select a player from the dropdown first!")
-            return 
-        end
-        
-        local targetPlr = nil
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p.Name == targetName or p.DisplayName == targetName then targetPlr = p break end
-        end
-        
-        if not targetPlr then 
-            Library:Notify("❌ Player '" .. targetName .. "' not found in server.")
-            return 
-        end
-        
-        -- ล้างซากเก่าทิ้งแบบนุ่มนวล
-        clearPlayerRemotesUI()
-        
-        local playerRemotes = {}
-        local foundMap = {}
-        
-        for _, obj in ipairs(targetPlr:GetDescendants()) do
-            if obj:IsA("RemoteEvent") and not foundMap[obj] then
-                foundMap[obj] = true
-                table.insert(playerRemotes, obj)
+            if targetName == "" or targetName == "nil" then 
+                Library:Notify("⚠️ Please select a player from the dropdown!")
+                return 
             end
-        end
-        
-        if targetPlr.Character then
-            for _, obj in ipairs(targetPlr.Character:GetDescendants()) do
+            
+            local targetPlr = nil
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p.Name == targetName or p.DisplayName == targetName then 
+                    targetPlr = p 
+                    break 
+                end
+            end
+            
+            if not targetPlr then 
+                Library:Notify("❌ Player '" .. targetName .. "' not found.")
+                return 
+            end
+
+            Library:Notify("⏳ Scanning " .. targetPlr.Name .. "...")
+            
+            clearPlayerRemotesUI()
+            
+            local playerRemotes = {}
+            local foundMap = {}
+            
+            -- หาใน Backpack, PlayerGui ฯลฯ
+            for _, obj in ipairs(targetPlr:GetDescendants()) do
                 if obj:IsA("RemoteEvent") and not foundMap[obj] then
                     foundMap[obj] = true
                     table.insert(playerRemotes, obj)
                 end
             end
-        end
-        
-        table.sort(playerRemotes, function(a, b)
-            local sourceA = getFirstNodeName(a):lower()
-            local sourceB = getFirstNodeName(b):lower()
-            if sourceA == sourceB then return a.Name:lower() < b.Name:lower() end
-            return sourceA < sourceB
+            
+            -- หาใน Character
+            if targetPlr.Character then
+                for _, obj in ipairs(targetPlr.Character:GetDescendants()) do
+                    if obj:IsA("RemoteEvent") and not foundMap[obj] then
+                        foundMap[obj] = true
+                        table.insert(playerRemotes, obj)
+                    end
+                end
+            end
+            
+            table.sort(playerRemotes, function(a, b)
+                local sourceA = getFirstNodeName(a):lower()
+                local sourceB = getFirstNodeName(b):lower()
+                if sourceA == sourceB then return a.Name:lower() < b.Name:lower() end
+                return sourceA < sourceB
+            end)
+            
+            for _, obj in ipairs(playerRemotes) do
+                generateRemoteUI(obj, PlayerRemoteGroupbox, playerRemoteElements, currentPlayerUIRegistry, "P_")
+            end
+            
+            Library:Notify("✅ Found " .. #playerRemotes .. " remotes for " .. targetPlr.Name)
         end)
-        
-        for _, obj in ipairs(playerRemotes) do
-            generateRemoteUI(obj, PlayerRemoteGroupbox, playerRemoteElements, currentPlayerUIRegistry, "P_")
+
+        -- ถ้าเกิดบั๊กที่ไม่คาดคิด มันจะแจ้งเป็นตัวหนังสือสีแดงให้เรารู้
+        if not success then
+            Library:Notify("🚨 Error: " .. tostring(err))
         end
-        
-        Library:Notify("✅ Scanned " .. targetPlr.Name .. " - Found " .. #playerRemotes .. " remotes.")
     end
 })
 
 PlayerRemoteGroupbox:AddLabel("D_Player", {Text = "▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬"})
-                                            
+              
 -- ======================================================================
 -- [ TAB: MISC (ESP & AIMBOT) ]
 -- ======================================================================
