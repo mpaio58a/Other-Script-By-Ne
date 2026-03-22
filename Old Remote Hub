@@ -57,7 +57,8 @@ local targetPlayer = nil
 -- ======================================================================
 -- [ REMOTE EXECUTE SYSTEM ]
 -- ======================================================================
-local RemoteGroupbox = Tabs.Remote:AddLeftGroupbox("All Remotes")
+local savedAmounts = {} -- ระบบจดจำจำนวนรันแยกตามแต่ละ Remote
+local isSyncing = false -- ป้องกันบัค Loop ตอนซิงค์ค่าระหว่างบน-ล่าง
 
 local function MakeDraggable(guiObject)
     local dragging, dragInput, dragStart, startPos
@@ -81,7 +82,7 @@ local function MakeDraggable(guiObject)
     end)
 end
 
-local function createOnScreenButton(remote, inputId, displayName)
+local function createOnScreenButton(remote, remoteDisplayName, buttonText)
     local guiName = "CustomRemoteButtonsGui"
     local gui = CoreGui:FindFirstChild(guiName) or Instance.new("ScreenGui", CoreGui)
     gui.Name = guiName
@@ -89,7 +90,7 @@ local function createOnScreenButton(remote, inputId, displayName)
     local randomId = math.random(1, 100000)
     local btn = Instance.new("TextButton")
     btn.Name = remote.Name .. "_" .. randomId
-    btn.Text = "  " .. displayName .. "  "
+    btn.Text = "  " .. buttonText .. "  "
     btn.Size = UDim2.new(0, 0, 0, 25)
     btn.AutomaticSize = Enum.AutomaticSize.X
     btn.Position = UDim2.new(0, math.random(50, 250), 0, math.random(50, 250))
@@ -97,27 +98,166 @@ local function createOnScreenButton(remote, inputId, displayName)
     btn.TextColor3 = Color3.fromRGB(255, 255, 255)
     btn.Font = Enum.Font.SourceSansBold
     btn.TextSize = 14
-    
+
     Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
     btn.Parent = gui
     MakeDraggable(btn)
-    
+
     btn.MouseButton1Click:Connect(function()
-        local amount = tonumber(Options[inputId] and Options[inputId].Value or "1") or 1
+        local amount = tonumber(savedAmounts[remoteDisplayName]) or 1
         for i = 1, amount do remote:FireServer() end
     end)
 end
 
+-- 1. เพิ่ม Dropdown Search และ ช่องค้นหาแบบตัวอักษรนำหน้า
+local TopRemoteGroupbox = Tabs.Remote:AddLeftGroupbox("Search & Execute")
+
+local remoteNames = {}
+local remoteMap = {}
+
 for _, instance in ipairs(ReplicatedStorage:GetDescendants()) do
     if instance:IsA("RemoteEvent") then
+        local displayName = instance.Name .. " [" .. instance.Parent.Name .. "]"
+        table.insert(remoteNames, displayName)
+        remoteMap[displayName] = instance
+        savedAmounts[displayName] = "1"
+    end
+end
+
+if #remoteNames == 0 then
+    table.insert(remoteNames, "No Remotes Found")
+end
+
+-- ช่องค้นหาที่สร้างใหม่ (กรองแบบ Starts With)
+TopRemoteGroupbox:AddInput("SearchRemotePrefix", {
+    Default = "",
+    Numeric = false,
+    Finished = false,
+    Text = "Search Remote (Prefix)",
+    Placeholder = "Search starting with...",
+    Callback = function(Value)
+        local term = string.lower(Value)
+        local filtered = {}
+        
+        for _, name in ipairs(remoteNames) do
+            -- เช็คว่าชื่อเริ่มต้นด้วยคำที่พิมพ์หรือไม่
+            if term == "" or string.sub(string.lower(name), 1, #term) == term then
+                table.insert(filtered, name)
+            end
+        end
+        
+        if #filtered == 0 then
+            table.insert(filtered, "No Remotes Found")
+        end
+        
+        -- อัปเดตรายการใน Dropdown
+        if Options.SelectedRemote then
+            Options.SelectedRemote:SetValues(filtered)
+            Options.SelectedRemote:SetValue(filtered[1]) -- เลือกอันแรกอัตโนมัติ
+        end
+    end
+})
+
+TopRemoteGroupbox:AddDropdown("SelectedRemote", {
+    Values = remoteNames,
+    Default = 1,
+    Multi = false,
+    Text = "Select Remote",
+    Searchable = false, -- ปิด Searchable ของเดิมทิ้ง
+    Callback = function(Value)
+        if Options.TopRunAmount and not isSyncing then
+            isSyncing = true
+            Options.TopRunAmount:SetValue(savedAmounts[Value] or "1")
+            isSyncing = false
+        end
+    end
+})
+
+TopRemoteGroupbox:AddInput("TopRunAmount", {
+    Default = "1",
+    Numeric = true,
+    Finished = false,
+    Text = "Amount to Fire",
+    Placeholder = "Enter amount...",
+    Callback = function(Value)
+        if isSyncing then return end
+        
+        local selectedName = Options.SelectedRemote.Value
+        if selectedName and selectedName ~= "No Remotes Found" then
+            savedAmounts[selectedName] = Value
+            
+            local remote = remoteMap[selectedName]
+            if remote then
+                local uniqueId = "RemoteInput_" .. remote:GetDebugId()
+                if Options[uniqueId] and Options[uniqueId].Value ~= Value then
+                    isSyncing = true
+                    Options[uniqueId]:SetValue(Value)
+                    isSyncing = false
+                end
+            end
+        end
+    end
+})
+
+TopRemoteGroupbox:AddButton({
+    Text = "▶ Run Selected",
+    Func = function()
+        local selectedName = Options.SelectedRemote.Value
+        local remote = remoteMap[selectedName]
+        if remote then
+            local amount = tonumber(savedAmounts[selectedName]) or 1
+            for i = 1, amount do
+                remote:FireServer()
+            end
+        end
+    end
+})
+
+TopRemoteGroupbox:AddButton({
+    Text = "🪟 Add Float Button",
+    Func = function()
+        local selectedName = Options.SelectedRemote.Value
+        local remote = remoteMap[selectedName]
+        if remote then
+            createOnScreenButton(remote, selectedName, remote.Name)
+        end
+    end
+})
+
+-- 2. รายชื่อ Remote ทั้งหมดแบบแยก (ด้านล่าง)
+local RemoteGroupbox = Tabs.Remote:AddLeftGroupbox("All Remotes (List)")
+
+for _, instance in ipairs(ReplicatedStorage:GetDescendants()) do
+    if instance:IsA("RemoteEvent") then
+        local displayName = instance.Name .. " [" .. instance.Parent.Name .. "]"
         local uniqueId = "RemoteInput_" .. instance:GetDebugId()
+        
         RemoteGroupbox:AddLabel("🎯 " .. instance.Name)
-        RemoteGroupbox:AddInput(uniqueId, { Default = "1", Numeric = true, Finished = false, Text = "Amount to Fire", Placeholder = "Enter amount..." })
+        RemoteGroupbox:AddInput(uniqueId, { 
+            Default = "1", 
+            Numeric = true, 
+            Finished = false, 
+            Text = "Amount to Fire", 
+            Placeholder = "Enter amount...",
+            Callback = function(Value)
+                if isSyncing then return end
+                
+                savedAmounts[displayName] = Value
+                
+                if Options.SelectedRemote and Options.SelectedRemote.Value == displayName then
+                    if Options.TopRunAmount and Options.TopRunAmount.Value ~= Value then
+                        isSyncing = true
+                        Options.TopRunAmount:SetValue(Value)
+                        isSyncing = false
+                    end
+                end
+            end
+        })
         RemoteGroupbox:AddButton({ Text = "Execute", Func = function()
-            local amount = tonumber(Options[uniqueId].Value) or 1
+            local amount = tonumber(savedAmounts[displayName]) or 1
             for i = 1, amount do instance:FireServer() end
         end })
-        RemoteGroupbox:AddButton({ Text = "Add Button On Screen", Func = function() createOnScreenButton(instance, uniqueId, instance.Name) end })
+        RemoteGroupbox:AddButton({ Text = "Add Button On Screen", Func = function() createOnScreenButton(instance, displayName, instance.Name) end })
         RemoteGroupbox:AddDivider()
     end
 end
@@ -158,8 +298,13 @@ MiscGroupbox:AddInput("AimbotTarget", {
             if #plys > 0 then targetPlayer = plys[math.random(1, #plys)]; Options.AimbotTarget:SetValue(targetPlayer.Name) else targetPlayer = nil end
             return
         end
+        
+        -- ปรับ Aimbot Search ให้ค้นหาจากคำนำหน้า (Prefix) ด้วย
         for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer and string.find(string.lower(p.Name), name) then targetPlayer = p return end
+            if p ~= LocalPlayer and string.sub(string.lower(p.Name), 1, #name) == name then 
+                targetPlayer = p 
+                return 
+            end
         end
         targetPlayer = nil
     end
@@ -179,9 +324,8 @@ RunService.RenderStepped:Connect(function()
                 local char = p.Character
                 local head = char and char:FindFirstChild("Head")
                 local hum = char and char:FindFirstChild("Humanoid")
-                
+
                 if char and head and hum and hum.Health > 0 then
-                    -- 1. Fixed Highlight (Always reapplies on respawn)
                     local hl = char:FindFirstChild("ESPHighlight")
                     if not hl then
                         hl = Instance.new("Highlight")
@@ -193,9 +337,8 @@ RunService.RenderStepped:Connect(function()
                         hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
                         hl.Parent = char
                     end
-                    hl.Adornee = char -- Re-confirm Adornee every frame
+                    hl.Adornee = char
 
-                    -- 2. Fixed BillboardGui (Name & Health re-attach)
                     local bb = espFolder:FindFirstChild(p.Name .. "_ESP")
                     if not bb then
                         bb = Instance.new("BillboardGui")
@@ -204,7 +347,7 @@ RunService.RenderStepped:Connect(function()
                         bb.AlwaysOnTop = true
                         bb.StudsOffset = Vector3.new(0, 3.5, 0)
                         bb.Parent = espFolder
-                        
+
                         local lbl = Instance.new("TextLabel", bb)
                         lbl.Name = "Label"
                         lbl.Size = UDim2.new(1, 0, 1, 0)
@@ -213,15 +356,13 @@ RunService.RenderStepped:Connect(function()
                         lbl.Font = Enum.Font.SourceSansBold
                         lbl.TextSize = 14
                     end
-                    
-                    -- Crucial: Re-attach Adornee to the current Head of the new Character
+
                     if bb.Adornee ~= head then
                         bb.Adornee = head
                     end
 
                     bb.Label.Text = p.Name .. "\n" .. math.floor(hum.Health) .. "/" .. math.floor(hum.MaxHealth)
                 else
-                    -- Cleanup old objects if player is dead or char is missing
                     local bb = espFolder:FindFirstChild(p.Name .. "_ESP")
                     if bb then bb.Adornee = nil bb.Label.Text = "" end
                 end
