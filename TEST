@@ -1,0 +1,460 @@
+-- Load UI Library
+local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
+local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
+local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
+local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
+
+-- [ UI Library Font Override ]
+Library.FontFace = Font.fromEnum(Enum.Font.Gotham)
+
+local Options = Library.Options
+local Toggles = Library.Toggles
+
+-- Services
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
+local LocalPlayer = Players.LocalPlayer
+
+-- Create Main Window
+local Window = Library:CreateWindow({
+    Title = "Ultimate Executor",
+    AutoShow = true,
+    Center = true,
+    ShowCustomCursor = true,
+})
+
+-- Curve the UI
+task.spawn(function()
+    task.wait(0.5)
+    for _, obj in pairs(game:GetService("CoreGui"):GetDescendants()) do
+        if obj:IsA("Frame") and obj.Name == "Main" and obj.Parent and obj.Parent:IsA("ScreenGui") then
+            if not obj:FindFirstChildOfClass("UICorner") then
+                local corner = Instance.new("UICorner")
+                corner.CornerRadius = UDim.new(0, 8)
+                corner.Parent = obj
+            end
+            obj.ClipsDescendants = true
+        end
+    end
+end)
+
+local Tabs = {
+    Remote = Window:AddTab("Remote", "zap"),
+    Setting = Window:AddTab("Setting", "settings"),
+}
+
+-- ESP Container
+local espFolder = Instance.new("Folder")
+espFolder.Name = "ESP_Container"
+local success = pcall(function() espFolder.Parent = CoreGui end)
+if not success then espFolder.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+
+local targetPlayer = nil
+local savedAmounts = {} 
+local isSyncing = false 
+
+-- ======================================================================
+-- [ CORE FUNCTIONS ]
+-- ======================================================================
+local function MakeDraggable(guiObject)
+    local dragging, dragInput, dragStart, startPos
+    local function update(input)
+        local delta = input.Position - dragStart
+        guiObject.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+    guiObject.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true; dragStart = input.Position; startPos = guiObject.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then dragging = false end
+            end)
+        end
+    end)
+    guiObject.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then dragInput = input end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then update(input) end
+    end)
+end
+
+-- สร้างปุ่ม Float พื้นฐาน
+local function createOnScreenButton(remote, remoteDisplayName, buttonText)
+    local guiName = "CustomRemoteButtonsGui"
+    local gui = CoreGui:FindFirstChild(guiName) or Instance.new("ScreenGui", CoreGui)
+    gui.Name = guiName
+
+    local randomId = math.random(1, 100000)
+    local btn = Instance.new("TextButton")
+    btn.Name = remote.Name .. "_" .. randomId
+    btn.Text = "  " .. buttonText .. "  "
+    btn.Size = UDim2.new(0, 0, 0, 25)
+    btn.AutomaticSize = Enum.AutomaticSize.X
+    btn.Position = UDim2.new(0, math.random(50, 250), 0, math.random(50, 250))
+    btn.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.Font = Enum.Font.SourceSansBold
+    btn.TextSize = 14
+
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+    btn.Parent = gui
+    MakeDraggable(btn)
+
+    btn.MouseButton1Click:Connect(function()
+        local amount = tonumber(savedAmounts[remoteDisplayName]) or 1
+        for i = 1, amount do remote:FireServer() end
+    end)
+end
+
+-- สร้างปุ่ม Float Custom (Red / Red2) แบบกดทีละครั้ง
+local function createCustomSkillButton(buttonText, argsTable)
+    local guiName = "CustomRemoteButtonsGui"
+    local gui = CoreGui:FindFirstChild(guiName) or Instance.new("ScreenGui", CoreGui)
+    gui.Name = guiName
+
+    local btn = Instance.new("TextButton")
+    btn.Name = buttonText .. "_Custom_" .. math.random(1, 10000)
+    btn.Text = "  " .. buttonText .. "  " 
+    btn.Size = UDim2.new(0, 0, 0, 25)
+    btn.AutomaticSize = Enum.AutomaticSize.X
+    btn.Position = UDim2.new(0, math.random(50, 250), 0, math.random(50, 250))
+    btn.BackgroundColor3 = Color3.fromRGB(0, 0, 0) 
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255) 
+    btn.Font = Enum.Font.SourceSansBold
+    btn.TextSize = 14
+
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+    btn.Parent = gui
+    MakeDraggable(btn)
+
+    btn.MouseButton1Click:Connect(function()
+        local success_remote, remote = pcall(function()
+            return ReplicatedStorage:WaitForChild("Remotes", 2):WaitForChild("Red", 2)
+        end)
+        
+        if success_remote and remote then
+            for i = 1, 50 do
+                remote:FireServer(unpack(argsTable))
+            end
+        end
+    end)
+end
+
+-- สร้างปุ่ม Float แบบ Toggle วนลูป
+local function createCustomFloatToggle(buttonText, argsTable, waitInputId)
+    local guiName = "CustomFloatTogglesGui"
+    local gui = CoreGui:FindFirstChild(guiName) or Instance.new("ScreenGui", CoreGui)
+    gui.Name = guiName
+    gui.Enabled = Toggles.ShowFloatToggleFeature and Toggles.ShowFloatToggleFeature.Value or false
+
+    local btn = Instance.new("TextButton")
+    btn.Name = buttonText .. "_Toggle_" .. math.random(1, 10000)
+    btn.Text = "  " .. buttonText .. " [OFF]  " 
+    btn.Size = UDim2.new(0, 0, 0, 25)
+    btn.AutomaticSize = Enum.AutomaticSize.X
+    btn.Position = UDim2.new(0, math.random(50, 250), 0, math.random(50, 250))
+    btn.BackgroundColor3 = Color3.fromRGB(0, 0, 0) 
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255) 
+    btn.Font = Enum.Font.SourceSansBold
+    btn.TextSize = 14
+
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+    btn.Parent = gui
+    MakeDraggable(btn)
+
+    local isToggled = false
+    btn.MouseButton1Click:Connect(function()
+        isToggled = not isToggled
+        btn.Text = isToggled and ("  " .. buttonText .. " [ON]  ") or ("  " .. buttonText .. " [OFF]  ")
+        btn.BackgroundColor3 = isToggled and Color3.fromRGB(0, 100, 0) or Color3.fromRGB(0, 0, 0) -- เปลี่ยนเป็นสีเขียวตอนเปิด
+
+        if isToggled then
+            task.spawn(function()
+                while isToggled do
+                    local waitTime = tonumber(Options[waitInputId] and Options[waitInputId].Value) or 1
+                    local success_remote, remote = pcall(function()
+                        return ReplicatedStorage:WaitForChild("Remotes", 2):WaitForChild("Red", 2)
+                    end)
+                    
+                    if success_remote and remote then
+                        for i = 1, 50 do
+                            remote:FireServer(unpack(argsTable))
+                        end
+                    end
+                    task.wait(waitTime)
+                end
+            end)
+        end
+    end)
+end
+
+-- ======================================================================
+-- [ REMOTE EXECUTE SYSTEM (ALL REMOTES) ]
+-- ======================================================================
+local TopRemoteGroupbox = Tabs.Remote:AddLeftGroupbox("Search & Execute")
+
+local remoteNames = {}
+local remoteMap = {}
+
+for _, instance in ipairs(ReplicatedStorage:GetDescendants()) do
+    if instance:IsA("RemoteEvent") then
+        local displayName = instance.Name .. " [" .. instance.Parent.Name .. "]"
+        table.insert(remoteNames, displayName)
+        remoteMap[displayName] = instance
+        savedAmounts[displayName] = "1"
+    end
+end
+
+if #remoteNames == 0 then table.insert(remoteNames, "No Remotes Found") end
+
+TopRemoteGroupbox:AddInput("SearchRemotePrefix", {
+    Default = "", Numeric = false, Finished = false, Text = "Search Remote (Prefix)", Placeholder = "Search starting with...",
+    Callback = function(Value)
+        local term = string.lower(Value)
+        local filtered = {}
+        for _, name in ipairs(remoteNames) do
+            if term == "" or string.sub(string.lower(name), 1, #term) == term then table.insert(filtered, name) end
+        end
+        if #filtered == 0 then table.insert(filtered, "No Remotes Found") end
+        if Options.SelectedRemote then
+            Options.SelectedRemote:SetValues(filtered)
+            Options.SelectedRemote:SetValue(filtered[1]) 
+        end
+    end
+})
+
+TopRemoteGroupbox:AddDropdown("SelectedRemote", {
+    Values = remoteNames, Default = 1, Multi = false, Text = "Select Remote", Searchable = false,
+    Callback = function(Value)
+        if Options.TopRunAmount and not isSyncing then
+            isSyncing = true
+            Options.TopRunAmount:SetValue(savedAmounts[Value] or "1")
+            isSyncing = false
+        end
+    end
+})
+
+TopRemoteGroupbox:AddInput("TopRunAmount", {
+    Default = "1", Numeric = true, Finished = false, Text = "Amount to Fire", Placeholder = "Enter amount...",
+    Callback = function(Value)
+        if isSyncing then return end
+        local selectedName = Options.SelectedRemote.Value
+        if selectedName and selectedName ~= "No Remotes Found" then
+            savedAmounts[selectedName] = Value
+            local remote = remoteMap[selectedName]
+            if remote then
+                local uniqueId = "RemoteInput_" .. remote:GetDebugId()
+                if Options[uniqueId] and Options[uniqueId].Value ~= Value then
+                    isSyncing = true
+                    Options[uniqueId]:SetValue(Value)
+                    isSyncing = false
+                end
+            end
+        end
+    end
+})
+
+TopRemoteGroupbox:AddButton({ Text = "▶ Run Selected", Func = function()
+    local selectedName = Options.SelectedRemote.Value
+    local remote = remoteMap[selectedName]
+    if remote then
+        local amount = tonumber(savedAmounts[selectedName]) or 1
+        for i = 1, amount do remote:FireServer() end
+    end
+end })
+
+TopRemoteGroupbox:AddButton({ Text = "🪟 Add Float Button", Func = function()
+    local selectedName = Options.SelectedRemote.Value
+    local remote = remoteMap[selectedName]
+    if remote then createOnScreenButton(remote, selectedName, remote.Name) end
+end })
+
+local RemoteGroupbox = Tabs.Remote:AddLeftGroupbox("All Remotes (List)")
+for _, instance in ipairs(ReplicatedStorage:GetDescendants()) do
+    if instance:IsA("RemoteEvent") then
+        local displayName = instance.Name .. " [" .. instance.Parent.Name .. "]"
+        local uniqueId = "RemoteInput_" .. instance:GetDebugId()
+        
+        RemoteGroupbox:AddLabel("🎯 " .. instance.Name)
+        RemoteGroupbox:AddInput(uniqueId, { 
+            Default = "1", Numeric = true, Finished = false, Text = "Amount to Fire", Placeholder = "Enter amount...",
+            Callback = function(Value)
+                if isSyncing then return end
+                savedAmounts[displayName] = Value
+                if Options.SelectedRemote and Options.SelectedRemote.Value == displayName then
+                    if Options.TopRunAmount and Options.TopRunAmount.Value ~= Value then
+                        isSyncing = true; Options.TopRunAmount:SetValue(Value); isSyncing = false
+                    end
+                end
+            end
+        })
+        RemoteGroupbox:AddButton({ Text = "Execute", Func = function()
+            local amount = tonumber(savedAmounts[displayName]) or 1
+            for i = 1, amount do instance:FireServer() end
+        end })
+        RemoteGroupbox:AddButton({ Text = "Add Button On Screen", Func = function() createOnScreenButton(instance, displayName, instance.Name) end })
+        RemoteGroupbox:AddDivider()
+    end
+end
+
+-- ======================================================================
+-- [ MISC SYSTEM ]
+-- ======================================================================
+local MiscGroupbox = Tabs.Remote:AddRightGroupbox("Misc")
+
+MiscGroupbox:AddToggle("PlayerESP", {
+    Text = "Enable Player ESP", Default = false,
+    Callback = function(Value) 
+        if not Value then 
+            espFolder:ClearAllChildren() 
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p.Character then
+                    local hl = p.Character:FindFirstChild("ESPHighlight")
+                    if hl then hl:Destroy() end
+                end
+            end
+        end 
+    end
+})
+
+MiscGroupbox:AddDivider()
+
+MiscGroupbox:AddInput("AimbotTarget", {
+    Default = "", Numeric = false, Finished = false, Text = "Aimbot Target", Placeholder = "Name / ran",
+    Callback = function(Value)
+        if Value == "" then targetPlayer = nil return end
+        local name = string.lower(string.match(Value, "^%s*(.-)%s*$"))
+        if name == "ran" or name == "random" then
+            local plys = {}
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("Humanoid") and p.Character.Humanoid.Health > 0 then table.insert(plys, p) end
+            end
+            if #plys > 0 then targetPlayer = plys[math.random(1, #plys)]; Options.AimbotTarget:SetValue(targetPlayer.Name) else targetPlayer = nil end
+            return
+        end
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer and string.sub(string.lower(p.Name), 1, #name) == name then 
+                targetPlayer = p 
+                return 
+            end
+        end
+        targetPlayer = nil
+    end
+})
+
+MiscGroupbox:AddButton({ Text = "🎯 Random Target", Func = function() Options.AimbotTarget:SetValue("ran") end })
+MiscGroupbox:AddToggle("AimbotToggle", { Text = "Enable Aimbot (Look At)", Default = false })
+
+-- ----------------------------------------------------------------------
+-- [ CUSTOM RED / RED 2 BUTTONS (ทำแยกตามที่ขอไว้ล่างสุด) ]
+-- ----------------------------------------------------------------------
+MiscGroupbox:AddDivider()
+MiscGroupbox:AddLabel("💥 Custom Remote: Red")
+MiscGroupbox:AddButton({ Text = "Red Button", Func = function()
+    local s, r = pcall(function() return ReplicatedStorage:WaitForChild("Remotes", 2):WaitForChild("Red", 2) end)
+    if s and r then for i=1,50 do r:FireServer("Reversal Red") end end
+end })
+MiscGroupbox:AddButton({ Text = "Float Button Red", Func = function() createCustomSkillButton("Red", {"Reversal Red"}) end })
+MiscGroupbox:AddInput("WaitAmountRed", { Default = "1", Numeric = true, Finished = false, Text = "Task.wait() Time", Placeholder = "Enter wait time..." })
+MiscGroupbox:AddButton({ Text = "Float Toggle Button Red", Func = function() createCustomFloatToggle("Red", {"Reversal Red"}, "WaitAmountRed") end })
+
+MiscGroupbox:AddDivider()
+MiscGroupbox:AddLabel("💥 Custom Remote: Red2")
+MiscGroupbox:AddButton({ Text = "Red2 Button", Func = function()
+    local s, r = pcall(function() return ReplicatedStorage:WaitForChild("Remotes", 2):WaitForChild("Red", 2) end)
+    if s and r then for i=1,50 do r:FireServer("First Reversal Red") end end
+end })
+MiscGroupbox:AddButton({ Text = "Float Button Red2", Func = function() createCustomSkillButton("Red2", {"First Reversal Red"}) end })
+MiscGroupbox:AddInput("WaitAmountRed2", { Default = "1", Numeric = true, Finished = false, Text = "Task.wait() Time", Placeholder = "Enter wait time..." })
+MiscGroupbox:AddButton({ Text = "Float Toggle Button Red2", Func = function() createCustomFloatToggle("Red2", {"First Reversal Red"}, "WaitAmountRed2") end })
+
+
+-- ======================================================================
+-- [ CORE LOOP: ESP & AIMBOT ]
+-- ======================================================================
+RunService.RenderStepped:Connect(function()
+    if Toggles.PlayerESP and Toggles.PlayerESP.Value then
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer then
+                local char = p.Character
+                local head = char and char:FindFirstChild("Head")
+                local hum = char and char:FindFirstChild("Humanoid")
+
+                if char and head and hum and hum.Health > 0 then
+                    local hl = char:FindFirstChild("ESPHighlight")
+                    if not hl then
+                        hl = Instance.new("Highlight", char)
+                        hl.Name = "ESPHighlight"
+                        hl.FillColor, hl.OutlineColor = Color3.new(1, 1, 1), Color3.new(1, 1, 1)
+                        hl.FillTransparency, hl.OutlineTransparency = 0.5, 0
+                        hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                    end
+                    hl.Adornee = char
+
+                    local bb = espFolder:FindFirstChild(p.Name .. "_ESP")
+                    if not bb then
+                        bb = Instance.new("BillboardGui", espFolder)
+                        bb.Name = p.Name .. "_ESP"
+                        bb.Size, bb.StudsOffset, bb.AlwaysOnTop = UDim2.new(0, 100, 0, 40), Vector3.new(0, 3.5, 0), true
+                        local lbl = Instance.new("TextLabel", bb)
+                        lbl.Name, lbl.Size = "Label", UDim2.new(1, 0, 1, 0)
+                        lbl.BackgroundTransparency, lbl.TextColor3 = 1, Color3.new(1, 1, 1)
+                        lbl.Font, lbl.TextSize = Enum.Font.SourceSansBold, 14
+                    end
+
+                    if bb.Adornee ~= head then bb.Adornee = head end
+                    bb.Label.Text = p.Name .. "\n" .. math.floor(hum.Health) .. "/" .. math.floor(hum.MaxHealth)
+                else
+                    local bb = espFolder:FindFirstChild(p.Name .. "_ESP")
+                    if bb then bb.Adornee = nil bb.Label.Text = "" end
+                end
+            end
+        end
+    end
+
+    if Toggles.AimbotToggle and Toggles.AimbotToggle.Value and targetPlayer then
+        local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        local tRoot = targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+        local tHum = targetPlayer.Character and targetPlayer.Character:FindFirstChild("Humanoid")
+        if myRoot and tRoot and tHum and tHum.Health > 0 then
+            myRoot.CFrame = CFrame.lookAt(myRoot.Position, Vector3.new(tRoot.Position.X, myRoot.Position.Y, tRoot.Position.Z))
+        elseif tHum and tHum.Health <= 0 then
+            Toggles.AimbotToggle:SetValue(false)
+        end
+    end
+end)
+
+-- ======================================================================
+-- [ SETTING ]
+-- ======================================================================
+local MenuGroup = Tabs.Setting:AddLeftGroupbox("Menu Settings")
+
+MenuGroup:AddToggle("ShowFloatToggleFeature", {
+    Text = "Float Toggle Button",
+    Default = false, -- ค่าเริ่มต้นคือปิดตามที่ขอ
+    Callback = function(Value)
+        -- เปิด/ปิดการแสดงผลของ Float Toggle บนหน้าจอ
+        local gui = CoreGui:FindFirstChild("CustomFloatTogglesGui")
+        if gui then gui.Enabled = Value end
+    end
+})
+
+MenuGroup:AddToggle("ShowCustomCursor", { Text = "Custom Cursor", Default = true, Callback = function(v) Library.ShowCustomCursor = v end })
+MenuGroup:AddButton("Unload UI", function()
+    local g1 = CoreGui:FindFirstChild("CustomRemoteButtonsGui"); if g1 then g1:Destroy() end
+    local g2 = CoreGui:FindFirstChild("CustomFloatTogglesGui"); if g2 then g2:Destroy() end
+    if espFolder then espFolder:Destroy() end
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p.Character and p.Character:FindFirstChild("ESPHighlight") then p.Character.ESPHighlight:Destroy() end
+    end
+    Library:Unload()
+end)
+MenuGroup:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind", { Default = "RightShift", NoUI = true, Text = "Menu keybind" })
+Library.ToggleKeybind = Options.MenuKeybind
+
+ThemeManager:SetLibrary(Library); SaveManager:SetLibrary(Library)
+ThemeManager:SetFolder("RemoteExecutor"); SaveManager:SetFolder("RemoteExecutor/configs")
+SaveManager:BuildConfigSection(Tabs.Setting); ThemeManager:ApplyToTab(Tabs.Setting); SaveManager:LoadAutoloadConfig()
