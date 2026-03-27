@@ -110,7 +110,7 @@ local function createOnScreenButton(remote, remoteDisplayName, buttonText)
 end
 
 -- สร้างปุ่ม Float Custom (Red / Red2) แบบกดทีละครั้ง
-local function createCustomSkillButton(buttonText, argsTable)
+local function createCustomSkillButton(buttonText, argsTable, amountInputId)
     local guiName = "CustomRemoteButtonsGui"
     local gui = CoreGui:FindFirstChild(guiName) or Instance.new("ScreenGui", CoreGui)
     gui.Name = guiName
@@ -136,9 +136,60 @@ local function createCustomSkillButton(buttonText, argsTable)
         end)
         
         if success_remote and remote then
-            for i = 1, 50 do
+            -- ดึงจำนวนจากช่องที่กรอก (ถ้าไม่ได้กรอกให้เป็น 50)
+            local amount = tonumber(Options[amountInputId] and Options[amountInputId].Value) or 50
+            for i = 1, amount do
                 remote:FireServer(unpack(argsTable))
             end
+        end
+    end)
+end
+
+-- สร้างปุ่ม Float แบบ Toggle วนลูป
+local function createCustomFloatToggle(buttonText, argsTable, waitInputId, amountInputId)
+    local guiName = "CustomFloatTogglesGui"
+    local gui = CoreGui:FindFirstChild(guiName) or Instance.new("ScreenGui", CoreGui)
+    gui.Name = guiName
+    gui.Enabled = Toggles.ShowFloatToggleFeature and Toggles.ShowFloatToggleFeature.Value or false
+
+    local btn = Instance.new("TextButton")
+    btn.Name = buttonText .. "_Toggle_" .. math.random(1, 10000)
+    btn.Text = "  " .. buttonText .. " [OFF]  " 
+    btn.Size = UDim2.new(0, 0, 0, 25)
+    btn.AutomaticSize = Enum.AutomaticSize.X
+    btn.Position = UDim2.new(0, math.random(50, 250), 0, math.random(50, 250))
+    btn.BackgroundColor3 = Color3.fromRGB(0, 0, 0) 
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255) 
+    btn.Font = Enum.Font.SourceSansBold
+    btn.TextSize = 14
+
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+    btn.Parent = gui
+    MakeDraggable(btn)
+
+    local isToggled = false
+    btn.MouseButton1Click:Connect(function()
+        isToggled = not isToggled
+        btn.Text = isToggled and ("  " .. buttonText .. " [ON]  ") or ("  " .. buttonText .. " [OFF]  ")
+        btn.BackgroundColor3 = isToggled and Color3.fromRGB(0, 100, 0) or Color3.fromRGB(0, 0, 0)
+
+        if isToggled then
+            task.spawn(function()
+                while isToggled do
+                    local waitTime = tonumber(Options[waitInputId] and Options[waitInputId].Value) or 1
+                    local amount = tonumber(Options[amountInputId] and Options[amountInputId].Value) or 50 -- ดึงจำนวนจากช่องกรอก
+                    local success_remote, remote = pcall(function()
+                        return ReplicatedStorage:WaitForChild("Remotes", 2):WaitForChild("Red", 2)
+                    end)
+                    
+                    if success_remote and remote then
+                        for i = 1, amount do
+                            remote:FireServer(unpack(argsTable))
+                        end
+                    end
+                    task.wait(waitTime)
+                end
+            end)
         end
     end)
 end
@@ -353,24 +404,27 @@ MiscGroupbox:AddToggle("AimbotToggle", { Text = "Enable Aimbot (Look At)", Defau
 -- ----------------------------------------------------------------------
 MiscGroupbox:AddDivider()
 MiscGroupbox:AddLabel("💥 Custom Remote: Red")
+MiscGroupbox:AddInput("AmountFireRed", { Default = "50", Numeric = true, Finished = false, Text = "Amount to Fire", Placeholder = "Enter amount..." })
 MiscGroupbox:AddButton({ Text = "Red Button", Func = function()
+    local amount = tonumber(Options.AmountFireRed.Value) or 50
     local s, r = pcall(function() return ReplicatedStorage:WaitForChild("Remotes", 2):WaitForChild("Red", 2) end)
-    if s and r then for i=1,50 do r:FireServer("Reversal Red") end end
+    if s and r then for i=1, amount do r:FireServer("Reversal Red") end end
 end })
-MiscGroupbox:AddButton({ Text = "Float Button Red", Func = function() createCustomSkillButton("Red", {"Reversal Red"}) end })
+MiscGroupbox:AddButton({ Text = "Float Button Red", Func = function() createCustomSkillButton("Red", {"Reversal Red"}, "AmountFireRed") end })
 MiscGroupbox:AddInput("WaitAmountRed", { Default = "1", Numeric = true, Finished = false, Text = "Task.wait() Time", Placeholder = "Enter wait time..." })
-MiscGroupbox:AddButton({ Text = "Float Toggle Button Red", Func = function() createCustomFloatToggle("Red", {"Reversal Red"}, "WaitAmountRed") end })
+MiscGroupbox:AddButton({ Text = "Float Toggle Button Red", Func = function() createCustomFloatToggle("Red", {"Reversal Red"}, "WaitAmountRed", "AmountFireRed") end })
 
 MiscGroupbox:AddDivider()
 MiscGroupbox:AddLabel("💥 Custom Remote: Red2")
+MiscGroupbox:AddInput("AmountFireRed2", { Default = "50", Numeric = true, Finished = false, Text = "Amount to Fire", Placeholder = "Enter amount..." })
 MiscGroupbox:AddButton({ Text = "Red2 Button", Func = function()
+    local amount = tonumber(Options.AmountFireRed2.Value) or 50
     local s, r = pcall(function() return ReplicatedStorage:WaitForChild("Remotes", 2):WaitForChild("Red", 2) end)
-    if s and r then for i=1,50 do r:FireServer("First Reversal Red") end end
+    if s and r then for i=1, amount do r:FireServer("First Reversal Red") end end
 end })
-MiscGroupbox:AddButton({ Text = "Float Button Red2", Func = function() createCustomSkillButton("Red2", {"First Reversal Red"}) end })
+MiscGroupbox:AddButton({ Text = "Float Button Red2", Func = function() createCustomSkillButton("Red2", {"First Reversal Red"}, "AmountFireRed2") end })
 MiscGroupbox:AddInput("WaitAmountRed2", { Default = "1", Numeric = true, Finished = false, Text = "Task.wait() Time", Placeholder = "Enter wait time..." })
-MiscGroupbox:AddButton({ Text = "Float Toggle Button Red2", Func = function() createCustomFloatToggle("Red2", {"First Reversal Red"}, "WaitAmountRed2") end })
-
+MiscGroupbox:AddButton({ Text = "Float Toggle Button Red2", Func = function() createCustomFloatToggle("Red2", {"First Reversal Red"}, "WaitAmountRed2", "AmountFireRed2") end })
 
 -- ======================================================================
 -- [ CORE LOOP: ESP & AIMBOT ]
