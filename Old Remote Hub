@@ -69,16 +69,14 @@ local function CreateMoveUI(name, remote, optId)
         end
     })
 
-    GBox:AddButton({
-        Text = "Add Float Button",
-        Func = function()
-            local amt = Options[optId] and Options[optId].Value or "1"
-            savedAmounts[name] = amt -- ใช้ตารางจากสคริปต์หลัก
-            pcall(function() createOnScreenButton(remote, name) end)
-        end
-    })
-    GBox:AddDivider()
-end
+    -- แก้ไขบรรทัด Add Float Button ในฟังก์ชัน AddMove เดิม
+GBox:AddButton({ 
+    Text = "Add Float Button", 
+    Func = function()
+        -- ส่ง optId เข้าไปด้วยเพื่อให้ปุ่มรู้ว่าต้องไปดึงเลขจำนวนจากช่องไหน
+        pcall(function() createOnScreenButton(remote, name, optId) end)
+    end
+})
 
 -- 4. รันคำสั่งสร้างปุ่มทั้งหมด (เรียงลำดับ)
 local function SetupGojoMoves()
@@ -127,16 +125,14 @@ local function AddSukunaMove(name, remote, optId)
         end
     })
 
-    SBox:AddButton({
-        Text = "Add Float Button",
-        Func = function()
-            local amt = Options[optId] and Options[optId].Value or "1"
-            savedAmounts[name] = amt
-            pcall(function() createOnScreenButton(remote, name) end)
-        end
-    })
-    SBox:AddDivider()
-end
+    -- แก้ไขบรรทัด Add Float Button ในฟังก์ชัน AddMove เดิม
+SBox:AddButton({ 
+    Text = "Add Float Button", 
+    Func = function()
+        -- ส่ง optId เข้าไปด้วยเพื่อให้ปุ่มรู้ว่าต้องไปดึงเลขจำนวนจากช่องไหน
+        pcall(function() createOnScreenButton(remote, name, optId) end)
+    end
+})
 
 -- 3. ตั้งค่า Remote Paths (อ้างอิงตามที่คุณส่งมา)
 local RS = game:GetService("ReplicatedStorage")
@@ -196,30 +192,63 @@ local function MakeDraggable(guiObject)
     end)
 end
 
--- 1. สร้างปุ่ม Float พื้นฐาน
-local function createOnScreenButton(remote, remoteDisplayName)
+-- ======================================================================
+-- [ แก้ไขระบบปุ่มลอย (Fixed Float Button) ]
+-- ======================================================================
+
+local function createOnScreenButton(remote, name, optId)
     local guiName = "CustomRemoteButtonsGui"
-    local gui = CoreGui:FindFirstChild(guiName) or Instance.new("ScreenGui", CoreGui)
+    local gui = game:GetService("CoreGui"):FindFirstChild(guiName) or Instance.new("ScreenGui", game:GetService("CoreGui"))
     gui.Name = guiName
 
     local btn = Instance.new("TextButton")
-    btn.Name = remote.Name .. "_" .. math.random(1, 100000)
-    btn.Text = "  " .. remote.Name .. "  "
-    btn.Size = UDim2.new(0, 0, 0, 25)
+    btn.Name = name .. "_Float"
+    btn.Text = "  " .. name .. "  "
+    btn.Size = UDim2.new(0, 0, 0, 30)
     btn.AutomaticSize = Enum.AutomaticSize.X
-    btn.Position = UDim2.new(0, math.random(50, 250), 0, math.random(50, 250))
-    btn.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    btn.Position = UDim2.new(0, math.random(100, 300), 0, math.random(100, 300))
+    btn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     btn.TextColor3 = Color3.fromRGB(255, 255, 255)
     btn.Font = Enum.Font.SourceSansBold
-    btn.TextSize = 14
-
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+    btn.TextSize = 16
     btn.Parent = gui
-    MakeDraggable(btn)
 
+    -- ใส่ขอบมนและความสวยงาม
+    local corner = Instance.new("UICorner", btn)
+    corner.CornerRadius = UDim.new(0, 8)
+    local stroke = Instance.new("UIStroke", btn)
+    stroke.Color = Color3.fromRGB(255, 255, 255)
+    stroke.Thickness = 1
+
+    -- ทำให้ลากได้
+    pcall(function() MakeDraggable(btn) end)
+
+    -- ฟังก์ชันเมื่อกดปุ่ม (หัวใจสำคัญที่ต้องแก้)
     btn.MouseButton1Click:Connect(function()
-        local amount = tonumber(savedAmounts[remoteDisplayName]) or 1
-        for i = 1, amount do remote:FireServer() end
+        -- ดึงจำนวนจากช่อง Input ล่าสุด (ถ้าไม่มีให้ใช้ 1)
+        local amt = 1
+        if optId and Options[optId] then
+            amt = tonumber(Options[optId].Value) or 1
+        elseif savedAmounts and savedAmounts[name] then
+            amt = tonumber(savedAmounts[name]) or 1
+        end
+
+        -- รัน Remote
+        for i = 1, amt do
+            task.spawn(function()
+                pcall(function() remote:FireServer() end)
+            end)
+        end
+        
+        -- Effect ตอนกด (กระพริบ)
+        btn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+        task.wait(0.1)
+        btn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    end)
+    
+    -- คลิกขวาเพื่อลบปุ่ม
+    btn.MouseButton2Click:Connect(function()
+        btn:Destroy()
     end)
 end
 
