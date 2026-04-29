@@ -549,95 +549,69 @@ RunService.RenderStepped:Connect(function()
 end)
 
 -- ======================================================================
--- [ ส่วนเสริม: GOJO MOVESET TAB ]
--- วางโค้ดชุดนี้ไว้ด้านล่างสุดของสคริปต์เดิมของคุณ
+-- [ GOJO MOVESET - STYLED EDITION ]
 -- ======================================================================
 
--- 2. สร้าง Groupbox สำหรับปุ่มกด
 local GojoMoves = GojoTab:AddLeftGroupbox("Gojo Moveset")
 
--- 3. ฟังก์ชันช่วยสร้างปุ่มแบบ Float (แบบเดียวกับหน้า Main)
-local function AddMove(name, func)
-    -- สร้างปุ่มในเมนู
-    GojoMoves:AddButton({
-        Text = name,
-        Func = func
+-- 2. ฟังก์ชันช่วยสร้าง UI ตามสไตล์ในรูปภาพ
+local function AddStyledMove(displayName, remotePath, amountKey)
+    -- ส่วนที่ 1: Label พร้อมไอคอน (🎯)
+    GojoMoves:AddLabel("🎯 " .. displayName)
+
+    -- ส่วนที่ 2: ช่อง Input สำหรับจำนวนที่จะ Fire (Amount to Fire)
+    GojoMoves:AddInput(amountKey, {
+        Default = "1",
+        Numeric = true,
+        Finished = false,
+        Text = "Amount to Fire",
+        Placeholder = "Enter amount...",
     })
-    
-    -- สร้างปุ่มลอย (Float Button) สำหรับท่านี้
+
+    -- ส่วนที่ 3: ปุ่ม Execute
     GojoMoves:AddButton({
-        Text = "Float: " .. name,
+        Text = "Execute",
         Func = function()
-            local guiName = "CustomRemoteButtonsGui"
-            local gui = game:GetService("CoreGui"):FindFirstChild(guiName) or Instance.new("ScreenGui", game:GetService("CoreGui"))
-            gui.Name = guiName
-
-            local btn = Instance.new("TextButton")
-            btn.Name = name .. "_Float"
-            btn.Text = "  " .. name .. "  "
-            btn.Size = UDim2.new(0, 0, 0, 25)
-            btn.AutomaticSize = Enum.AutomaticSize.X
-            btn.Position = UDim2.new(0, math.random(50, 250), 0, math.random(50, 250))
-            btn.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-            btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-            btn.Font = Enum.Font.SourceSansBold
-            btn.TextSize = 14
-            Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
-            btn.Parent = gui
-            
-            -- ทำให้ลากได้ (เรียกใช้ฟังก์ชันที่มีอยู่แล้วในสคริปต์หลัก)
-            pcall(function() MakeDraggable(btn) end)
-
-            btn.MouseButton1Click:Connect(func)
+            local amount = tonumber(Options[amountKey] and Options[amountKey].Value) or 1
+            local success, remote = pcall(function() return remotePath end)
+            if success and remote then
+                for i = 1, amount do remote:FireServer() end
+            end
         end
     })
+
+    -- ส่วนที่ 4: ปุ่ม Add Float Button
+    GojoMoves:AddButton({
+        Text = "Add Float Button",
+        Func = function()
+            local success, remote = pcall(function() return remotePath end)
+            if success and remote then
+                -- เรียกใช้ฟังก์ชันเดิมในเครื่อง โดยส่งค่าจำนวนจากช่อง Input ไปด้วย
+                local amountInput = Options[amountKey] and Options[amountKey].Value or "1"
+                savedAmounts[displayName] = amountInput -- บันทึกค่าเข้า Table หลักของสคริปต์คุณ
+                createOnScreenButton(remote, displayName)
+            end
+        end
+    })
+
+    -- ส่วนที่ 5: เส้นคั่น (Divider)
     GojoMoves:AddDivider()
 end
 
--- 4. รายการสกิลทั้งหมด (เรียงตามที่คุณให้มา)
-AddMove("Reversed Cursed Technique", function()
-    game:GetService("ReplicatedStorage").Remotes.ReversedCursedTechnique:FireServer()
-end)
+-- 3. รายการสกิล (รันตามลำดับ)
+local RS = game:GetService("ReplicatedStorage")
 
-AddMove("Honored One", function()
-    game:GetService("ReplicatedStorage").Characters.HonoredOne:FireServer()
-end)
-
-AddMove("Blue", function()
-    game:GetService("ReplicatedStorage").Remotes.Blue:FireServer()
-end)
-
-AddMove("Blue 2", function()
-    game:GetService("ReplicatedStorage").Remotes.Blue2:FireServer()
-end)
-
-AddMove("Hora Hora", function()
-    game:GetService("ReplicatedStorage").Remotes.HoraHora:FireServer()
-end)
-
-AddMove("Beatdown", function()
-    game:GetService("ReplicatedStorage").Remotes.Beatdown:FireServer()
-end)
-
-AddMove("Black Flash", function()
-    game:GetService("ReplicatedStorage").Remotes.BlackFlash:FireServer()
-end)
-
-AddMove("Heal", function()
-    game:GetService("ReplicatedStorage").Remotes.Heal:FireServer()
-end)
-
-AddMove("Unlimited Void", function()
-    game:GetService("ReplicatedStorage").Events.UnlimitedVoid:FireServer()
-end)
-
-AddMove("Purple", function()
-    game:GetService("ReplicatedStorage").Remotes.Purple:FireServer()
-end)
-
-AddMove("Imaginary Purple", function()
-    game:GetService("ReplicatedStorage").Remotes.ImaginaryPurple:FireServer()
-end)
+AddStyledMove("Reversed Cursed Technique", RS:WaitForChild("Remotes"):WaitForChild("ReversedCursedTechnique"), "Amt_RCT")
+AddStyledMove("Honored One", RS:WaitForChild("Characters"):WaitForChild("HonoredOne"), "Amt_Honored")
+AddStyledMove("Blue", RS:WaitForChild("Remotes"):WaitForChild("Blue"), "Amt_Blue")
+AddStyledMove("Blue 2", RS:WaitForChild("Remotes"):WaitForChild("Blue2"), "Amt_Blue2")
+AddStyledMove("Hora Hora", RS:WaitForChild("Remotes"):WaitForChild("HoraHora"), "Amt_Hora")
+AddStyledMove("Beatdown", RS:WaitForChild("Remotes"):WaitForChild("Beatdown"), "Amt_Beatdown")
+AddStyledMove("Black Flash", RS:WaitForChild("Remotes"):WaitForChild("BlackFlash"), "Amt_Black")
+AddStyledMove("Heal", RS:WaitForChild("Remotes"):WaitForChild("Heal"), "Amt_Heal")
+AddStyledMove("Unlimited Void", RS:WaitForChild("Events"):WaitForChild("UnlimitedVoid"), "Amt_Void")
+AddStyledMove("Purple", RS:WaitForChild("Remotes"):WaitForChild("Purple"), "Amt_Purple")
+AddStyledMove("Imaginary Purple", RS:WaitForChild("Remotes"):WaitForChild("ImaginaryPurple"), "Amt_IPurple")
 
 -- ======================================================================
 -- [ SETTING & VISIBILITY SYSTEM (FIXED) ]
