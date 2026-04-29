@@ -41,7 +41,7 @@ task.spawn(function()
     end
 end)
 
-local Remote = Window:AddTab("Remote", "rap")      -- แท็บที่ 1
+local Remote = Window:AddTab("Remote", "zap")      -- แท็บที่ 1
 local MTab = Window:AddTab("Moveset", "swords")    -- แท็บที่ 2 (ตรงกลาง)
 local Setting = Window:AddTab("Settings", "settings") -- แท็บที่ 3
 
