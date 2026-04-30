@@ -714,14 +714,14 @@ local SukunaGroupbox = Tabs.Moveset:AddRightGroupbox("Sukuna Moveset")
 
 local sukunaMoves = {
     {Name = "King of Curses", Path = {"Remotes", "Sukuna", "KingofCurses"}},
-    {Name = "The Vessel (Yuji)", Path = {"Characters", "TheVessel"}},
+    {Name = "The Vessel", Path = {"Characters", "TheVessel"}},
     {Name = "Malevolent Shrine", Path = {"Remotes", "Sukuna", "MalevolentShrine"}},
     {Name = "Fire Arrow", Path = {"Assets", "Remtoes", "Fire"}}, -- ใช้ Remtoes ตามที่คุณส่งมา
     {Name = "Red Heal", Path = {"Remotes", "RedHeal"}},
     {Name = "Dismantle", Path = {"Remotes", "Sukuna", "Dismantle"}},
     {Name = "Cleave", Path = {"Remotes", "Sukuna", "Cleaves"}},
     {Name = "Triple Slice", Path = {"Remotes", "Sukuna", "TripleSlice"}},
-    {Name = "Slaughter Demon (Yuji)", Path = {"Remotes", "Yuji", "SlaughterDemon"}}
+    {Name = "Slaughter Demon", Path = {"Remotes", "Yuji", "SlaughterDemon"}}
 }
 
 -- วนลูปสร้าง UI สำหรับ Sukuna
@@ -755,7 +755,7 @@ for _, move in ipairs(sukunaMoves) do
 
     -- ส่วนที่ซ่อนได้ (Input เวลา และปุ่ม Toggle)
     local _wInput = SukunaGroupbox:AddInput(waId, { 
-        Default = "1", Numeric = true, Finished = false, Text = "Wait Time", Placeholder = "1" 
+        Default = "1", Numeric = true, Finished = false, Text = "Task.wait() Time", Placeholder = "1" 
     })
     local _tButton = SukunaGroupbox:AddButton({ Text = "Add Float Toggle Button", Func = function()
         createGojoFloatToggle(move.Name, move.Path, waId, inId)
