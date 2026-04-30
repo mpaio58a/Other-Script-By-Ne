@@ -708,6 +708,69 @@ GojoGroupbox:AddButton({ Text = "Add Float Button", Func = function()
 end
 
 -- ======================================================================
+-- [ MOVESET SYSTEM: SUKUNA & YUJI ] - Right Groupbox
+-- ======================================================================
+local SukunaGroupbox = Tabs.Moveset:AddRightGroupbox("Sukuna Moveset")
+
+local sukunaMoves = {
+    {Name = "King of Curses", Path = {"Remotes", "Sukuna", "KingofCurses"}},
+    {Name = "The Vessel (Yuji)", Path = {"Characters", "TheVessel"}},
+    {Name = "Malevolent Shrine", Path = {"Remotes", "Sukuna", "MalevolentShrine"}},
+    {Name = "Fire Arrow", Path = {"Assets", "Remtoes", "Fire"}}, -- ใช้ Remtoes ตามที่คุณส่งมา
+    {Name = "Red Heal", Path = {"Remotes", "RedHeal"}},
+    {Name = "Dismantle", Path = {"Remotes", "Sukuna", "Dismantle"}},
+    {Name = "Cleave", Path = {"Remotes", "Sukuna", "Cleaves"}},
+    {Name = "Triple Slice", Path = {"Remotes", "Sukuna", "TripleSlice"}},
+    {Name = "Slaughter Demon (Yuji)", Path = {"Remotes", "Yuji", "SlaughterDemon"}}
+}
+
+-- วนลูปสร้าง UI สำหรับ Sukuna
+for _, move in ipairs(sukunaMoves) do
+    local mId = move.Name:gsub("%s+", ""):gsub("%(", ""):gsub("%)", "")
+    local inId = "SukunaAmt_" .. mId
+    local waId = "SukunaWait_" .. mId
+
+    -- สไตล์ Label และ Input ตามแบบที่คุณชอบ
+    SukunaGroupbox:AddLabel("💀 " .. move.Name)
+    
+    SukunaGroupbox:AddInput(inId, { 
+        Default = "1", Numeric = true, Finished = false, Text = "Amount to Fire", Placeholder = "1" 
+    })
+
+    -- ปุ่ม Execute (ยิงทันที)
+    SukunaGroupbox:AddButton({ Text = "Execute", Func = function()
+        local remote = getRemoteByPath(move.Path)
+        if remote then
+            local amount = tonumber(Options[inId].Value) or 1
+            for i = 1, amount do 
+                task.spawn(function() remote:FireServer() end) 
+            end
+        end
+    end })
+
+    -- ปุ่มสร้าง Float Button (สไตล์ Remote ดำ-ขาว)
+    SukunaGroupbox:AddButton({ Text = "Add Float Button", Func = function()
+        createGojoFloatButton(move.Name, move.Path, inId)
+    end })
+
+    -- ส่วนที่ซ่อนได้ (Input เวลา และปุ่ม Toggle)
+    local _wInput = SukunaGroupbox:AddInput(waId, { 
+        Default = "1", Numeric = true, Finished = false, Text = "Wait Time", Placeholder = "1" 
+    })
+    local _tButton = SukunaGroupbox:AddButton({ Text = "Add Float Toggle Button", Func = function()
+        createGojoFloatToggle(move.Name, move.Path, waId, inId)
+    end })
+
+    -- เก็บเข้าตารางเพื่อซ่อน/แสดงตาม Setting
+    if toggleFeaturesUI then
+        table.insert(toggleFeaturesUI, _wInput)
+        table.insert(toggleFeaturesUI, _tButton)
+    end
+
+    SukunaGroupbox:AddDivider()
+end
+
+-- ======================================================================
 -- [ SETTING & VISIBILITY SYSTEM (FIXED) ]
 -- ======================================================================
 
