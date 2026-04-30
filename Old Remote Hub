@@ -658,39 +658,34 @@ local gojoMoves = {
 }
 
 for _, move in ipairs(gojoMoves) do
-    local moveId = move.Name:gsub("%s+", "")
-    local inputId = "GojoAmount_" .. moveId
-    local waitId = "GojoWait_" .. moveId
+    local mId = move.Name:gsub("%s+", "")
+    local inId = "GojoAmt_" .. mId
+    local waId = "GojoWait_" .. mId
 
-    -- สไตล์ตามรูป ShakeEvent
     GojoGroupbox:AddLabel("🎯 " .. move.Name)
     
-    GojoGroupbox:AddInput(inputId, { 
-        Default = "1", Numeric = true, Finished = false, Text = "Amount to Fire", Placeholder = "1" 
-    })
+    GojoGroupbox:AddInput(inId, { Default = "1", Numeric = true, Text = "Amount to Fire", Placeholder = "1" })
 
-    -- ปุ่ม Execute (รัน Remote ทันที)
+    -- ส่วนที่ซ่อนได้ (Wait Input)
+    local _wInput = GojoGroupbox:AddInput(waId, { Default = "1", Numeric = true, Text = "Wait Time", Placeholder = "1" })
+    table.insert(toggleFeaturesUI, _wInput)
+
     GojoGroupbox:AddButton({ Text = "Execute", Func = function()
-        local amount = tonumber(Options[inputId].Value) or 1
-        fireSkillRemote(move.Path, amount)
+        local remote = getRemoteByPath(move.Path)
+        if remote then
+            for i = 1, tonumber(Options[inId].Value) or 1 do remote:FireServer() end
+        end
     end })
 
-    -- ปุ่มสร้าง Float Button
     GojoGroupbox:AddButton({ Text = "Add Float Button", Func = function()
-        createSkillFloatButton(move.Name, move.Path, inputId)
+        createGojoFloatButton(move.Name, move.Path, inId)
     end })
 
-    -- ส่วนที่ซ่อนไว้ (Toggle Features)
-    local _waitInput = GojoGroupbox:AddInput(waitId, { Default = "1", Numeric = true, Finished = false, Text = "Task.wait() Time" })
-    local _tglBtn = GojoGroupbox:AddButton({ Text = "Add Float Toggle Button", Func = function()
-        -- ใส่ฟังก์ชัน Toggle ของคุณที่นี่ (ถ้าต้องการใช้)
+    -- ส่วนที่ซ่อนได้ (Toggle Button)
+    local _tButton = GojoGroupbox:AddButton({ Text = "Add Float Toggle Button", Func = function()
+        createGojoFloatToggle(move.Name, move.Path, waId, inId)
     end })
-
-    -- เก็บเข้าตารางเพื่อซ่อน/แสดงตาม Setting
-    if toggleFeaturesUI then
-        table.insert(toggleFeaturesUI, _waitInput)
-        table.insert(toggleFeaturesUI, _tglBtn)
-    end
+    table.insert(toggleFeaturesUI, _tButton)
 
     GojoGroupbox:AddDivider()
 end
