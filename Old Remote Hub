@@ -583,8 +583,80 @@ RunService.RenderStepped:Connect(function()
 end)
 
 -- ======================================================================
--- [ MOVESET SYSTEM: GOJO ] - Styled like ShakeEvent
+-- [ CORE FUNCTIONS FOR MOVESET ]
 -- ======================================================================
+
+-- 1. ฟังก์ชันสำหรับยิง Remote ตาม Path ที่กำหนด (รองรับโฟลเดอร์หลายชั้น)
+local function fireSkillRemote(pathTable, amount)
+    local success, remote = pcall(function()
+        local curr = game:GetService("ReplicatedStorage")
+        for _, folderName in ipairs(pathTable) do
+            curr = curr:WaitForChild(folderName, 2)
+        end
+        return curr
+    end)
+    
+    if success and remote and remote:IsA("RemoteEvent") then
+        for i = 1, amount do
+            task.spawn(function()
+                remote:FireServer()
+            end)
+        end
+    end
+end
+
+-- 2. ฟังก์ชันสร้าง Float Button (ดีไซน์เหมือนแท็บ Remote)
+local function createSkillFloatButton(skillName, pathTable, amountInputId)
+    local guiName = "CustomRemoteButtonsGui"
+    local gui = game:GetService("CoreGui"):FindFirstChild(guiName) or Instance.new("ScreenGui", game:GetService("CoreGui"))
+    gui.Name = guiName
+
+    local btn = Instance.new("TextButton")
+    btn.Name = skillName .. "_Float"
+    btn.Text = "  " .. skillName .. "  "
+    btn.Size = UDim2.new(0, 0, 0, 30)
+    btn.AutomaticSize = Enum.AutomaticSize.X
+    btn.Position = UDim2.new(0, math.random(100, 300), 0, math.random(100, 300))
+    btn.BackgroundColor3 = Color3.fromRGB(30, 30, 30) -- สีเทาเข้มเหมือน Remote
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.Font = Enum.Font.SourceSansBold
+    btn.TextSize = 16
+    btn.Parent = gui
+
+    -- ขอบมนและเส้นขอบ (Design)
+    local corner = Instance.new("UICorner", btn)
+    corner.CornerRadius = UDim.new(0, 8)
+    local stroke = Instance.new("UIStroke", btn)
+    stroke.Color = Color3.fromRGB(255, 255, 255)
+    stroke.Thickness = 1
+
+    -- ทำให้ลากได้
+    pcall(function() MakeDraggable(btn) end)
+
+    -- การทำงานเมื่อกดปุ่ม
+    btn.MouseButton1Click:Connect(function()
+        -- ดึงค่า Amount จากช่อง Input ในเมนู (ถ้าหาไม่เจอให้ใช้ 1)
+        local amt = 1
+        if Options[amountInputId] then
+            amt = tonumber(Options[amountInputId].Value) or 1
+        end
+
+        fireSkillRemote(pathTable, amt)
+
+        -- Effect ตอนกด
+        btn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+        task.wait(0.1)
+        btn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    end)
+
+    -- คลิกขวาเพื่อลบ
+    btn.MouseButton2Click:Connect(function() btn:Destroy() end)
+end
+
+-- ======================================================================
+-- [ MOVESET TAB: GOJO MOVESET ]
+-- ======================================================================
+
 local GojoGroupbox = Tabs.Moveset:AddLeftGroupbox("Gojo Moveset")
 
 local gojoMoves = {
@@ -605,34 +677,31 @@ for _, move in ipairs(gojoMoves) do
     local inputId = "GojoAmount_" .. moveId
     local waitId = "GojoWait_" .. moveId
 
-    -- 1. Label (ใส่ไอคอนเพื่อให้เหมือนรูปเป๊ะๆ)
+    -- สไตล์ตามรูป ShakeEvent
     GojoGroupbox:AddLabel("🎯 " .. move.Name)
     
-    -- 2. Amount to Fire (Input)
     GojoGroupbox:AddInput(inputId, { 
         Default = "1", Numeric = true, Finished = false, Text = "Amount to Fire", Placeholder = "1" 
     })
 
-    -- 3. Execute Button
+    -- ปุ่ม Execute (รัน Remote ทันที)
     GojoGroupbox:AddButton({ Text = "Execute", Func = function()
         local amount = tonumber(Options[inputId].Value) or 1
         fireSkillRemote(move.Path, amount)
     end })
 
-    -- 4. Add Float Button
+    -- ปุ่มสร้าง Float Button
     GojoGroupbox:AddButton({ Text = "Add Float Button", Func = function()
         createSkillFloatButton(move.Name, move.Path, inputId)
     end })
 
-    -- [ Hidden Features: จะปรากฏเฉพาะตอนเปิดเมนู Setting ]
-    local _waitInput = GojoGroupbox:AddInput(waitId, { 
-        Default = "1", Numeric = true, Finished = false, Text = "Task.wait() Time", Placeholder = "Wait time..." 
-    })
+    -- ส่วนที่ซ่อนไว้ (Toggle Features)
+    local _waitInput = GojoGroupbox:AddInput(waitId, { Default = "1", Numeric = true, Finished = false, Text = "Task.wait() Time" })
     local _tglBtn = GojoGroupbox:AddButton({ Text = "Add Float Toggle Button", Func = function()
-        createSkillFloatToggle(move.Name, move.Path, waitId, inputId)
+        -- ใส่ฟังก์ชัน Toggle ของคุณที่นี่ (ถ้าต้องการใช้)
     end })
 
-    -- ตรวจสอบก่อน insert เพื่อป้องกัน Error
+    -- เก็บเข้าตารางเพื่อซ่อน/แสดงตาม Setting
     if toggleFeaturesUI then
         table.insert(toggleFeaturesUI, _waitInput)
         table.insert(toggleFeaturesUI, _tglBtn)
