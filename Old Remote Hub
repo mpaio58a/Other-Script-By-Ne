@@ -583,11 +583,11 @@ RunService.RenderStepped:Connect(function()
 end)
 
 -- ======================================================================
--- [ CORE FUNCTIONS FOR MOVESET ]
+-- [ GOJO MOVESET LOGIC - MATCHING REMOTE STYLE ]
 -- ======================================================================
 
--- 1. ฟังก์ชันสำหรับยิง Remote ตาม Path ที่กำหนด (รองรับโฟลเดอร์หลายชั้น)
-local function fireSkillRemote(pathTable, amount)
+-- ฟังก์ชันค้นหา Remote ตาม Path (ย้ายมาไว้ข้างนอกเพื่อให้เรียกใช้ซ้ำได้)
+local function getRemoteFromPath(pathTable)
     local success, remote = pcall(function()
         local curr = game:GetService("ReplicatedStorage")
         for _, folderName in ipairs(pathTable) do
@@ -595,18 +595,11 @@ local function fireSkillRemote(pathTable, amount)
         end
         return curr
     end)
-    
-    if success and remote and remote:IsA("RemoteEvent") then
-        for i = 1, amount do
-            task.spawn(function()
-                remote:FireServer()
-            end)
-        end
-    end
+    return success and remote or nil
 end
 
--- 2. ฟังก์ชันสร้าง Float Button (ดีไซน์เหมือนแท็บ Remote)
-local function createSkillFloatButton(skillName, pathTable, amountInputId)
+-- 1. สร้างปุ่ม Float แบบกดครั้งเดียว (เลียนแบบ createOnScreenButton)
+local function createSkillFloatButton(skillName, pathTable, optId)
     local guiName = "CustomRemoteButtonsGui"
     local gui = game:GetService("CoreGui"):FindFirstChild(guiName) or Instance.new("ScreenGui", game:GetService("CoreGui"))
     gui.Name = guiName
@@ -617,40 +610,92 @@ local function createSkillFloatButton(skillName, pathTable, amountInputId)
     btn.Size = UDim2.new(0, 0, 0, 30)
     btn.AutomaticSize = Enum.AutomaticSize.X
     btn.Position = UDim2.new(0, math.random(100, 300), 0, math.random(100, 300))
-    btn.BackgroundColor3 = Color3.fromRGB(30, 30, 30) -- สีเทาเข้มเหมือน Remote
+    btn.BackgroundColor3 = Color3.fromRGB(30, 30, 30) -- สีเทาเข้ม
     btn.TextColor3 = Color3.fromRGB(255, 255, 255)
     btn.Font = Enum.Font.SourceSansBold
     btn.TextSize = 16
     btn.Parent = gui
 
-    -- ขอบมนและเส้นขอบ (Design)
     local corner = Instance.new("UICorner", btn)
     corner.CornerRadius = UDim.new(0, 8)
     local stroke = Instance.new("UIStroke", btn)
     stroke.Color = Color3.fromRGB(255, 255, 255)
     stroke.Thickness = 1
 
-    -- ทำให้ลากได้
     pcall(function() MakeDraggable(btn) end)
 
-    -- การทำงานเมื่อกดปุ่ม
     btn.MouseButton1Click:Connect(function()
-        -- ดึงค่า Amount จากช่อง Input ในเมนู (ถ้าหาไม่เจอให้ใช้ 1)
+        local remote = getRemoteFromPath(pathTable)
+        if not remote then return end
+
+        -- ดึงจำนวนจากช่อง Input (เลียนแบบ Logic optId)
         local amt = 1
-        if Options[amountInputId] then
-            amt = tonumber(Options[amountInputId].Value) or 1
+        if optId and Options[optId] then
+            amt = tonumber(Options[optId].Value) or 1
         end
 
-        fireSkillRemote(pathTable, amt)
+        for i = 1, amt do
+            task.spawn(function()
+                pcall(function() remote:FireServer() end)
+            end)
+        end
 
-        -- Effect ตอนกด
+        -- Effect กระพริบ
         btn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
         task.wait(0.1)
         btn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     end)
 
-    -- คลิกขวาเพื่อลบ
     btn.MouseButton2Click:Connect(function() btn:Destroy() end)
+end
+
+-- 2. สร้างปุ่ม Float แบบ Toggle (เลียนแบบ createOnScreenToggle)
+local function createSkillFloatToggle(skillName, pathTable, waitId, optId)
+    local guiName = "CustomFloatTogglesGui"
+    local gui = CoreGui:FindFirstChild(guiName) or Instance.new("ScreenGui", CoreGui)
+    gui.Name = guiName
+
+    local btn = Instance.new("TextButton")
+    btn.Name = skillName .. "_Toggle_" .. math.random(1, 10000)
+    btn.Text = "  " .. skillName .. " [OFF]  " 
+    btn.Size = UDim2.new(0, 0, 0, 25)
+    btn.AutomaticSize = Enum.AutomaticSize.X
+    btn.Position = UDim2.new(0, math.random(50, 250), 0, math.random(50, 250))
+    btn.BackgroundColor3 = Color3.fromRGB(0, 0, 0) -- พื้นดำ
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255) -- ตัวหนังสือขาว
+    btn.Font = Enum.Font.SourceSansBold
+    btn.TextSize = 14
+
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+    btn.Parent = gui
+    MakeDraggable(btn)
+
+    local isToggled = false
+    btn.MouseButton1Click:Connect(function()
+        isToggled = not isToggled
+
+        -- สลับสีตามสั่ง: OFF ดำ/ขาว, ON ขาว/ดำ
+        btn.Text = isToggled and ("  " .. skillName .. " [ON]  ") or ("  " .. skillName .. " [OFF]  ")
+        btn.BackgroundColor3 = isToggled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(0, 0, 0)
+        btn.TextColor3 = isToggled and Color3.fromRGB(0, 0, 0) or Color3.fromRGB(255, 255, 255)
+
+        if isToggled then
+            task.spawn(function()
+                while isToggled do
+                    local remote = getRemoteFromPath(pathTable)
+                    if remote then
+                        local waitTime = tonumber(Options[waitId] and Options[waitId].Value) or 1
+                        local amount = tonumber(Options[optId] and Options[optId].Value) or 1
+                        for i = 1, amount do
+                            remote:FireServer()
+                        end
+                    end
+                    task.wait(tonumber(Options[waitId] and Options[waitId].Value) or 1)
+                end
+            end)
+        end
+    end)
+    btn.MouseButton2Click:Connect(function() isToggled = false btn:Destroy() end)
 end
 
 -- ======================================================================
