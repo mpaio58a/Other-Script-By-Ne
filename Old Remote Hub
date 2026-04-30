@@ -340,14 +340,14 @@ TopRemoteGroupbox:AddButton({ Text = "▶ Run Selected", Func = function()
     end
 end })
 
-TopRemoteGroupbox:AddButton({ Text = "🪟 Add Float Button", Func = function()
+TopRemoteGroupbox:AddButton({ Text = "Add Float Button", Func = function()
     local selectedName = Options.SelectedRemote.Value
     local remote = remoteMap[selectedName]
     if remote then createOnScreenButton(remote, selectedName) end
 end })
 
 -- บันทึกเก็บไว้ซ่อน
-local _topTglBtn = TopRemoteGroupbox:AddButton({ Text = "🔁 Add Float Toggle Button", Func = function()
+local _topTglBtn = TopRemoteGroupbox:AddButton({ Text = "Add Float Toggle Button", Func = function()
     local selectedName = Options.SelectedRemote.Value
     local remote = remoteMap[selectedName]
     if remote then createOnScreenToggle(remote, selectedName) end
@@ -376,6 +376,8 @@ for _, instance in ipairs(ReplicatedStorage:GetDescendants()) do
             end
         })
         
+RemoteGroupbox:AddButton({ Text = "Add Float Button", Func = function() createOnScreenButton(instance, displayName) end })
+
         -- บันทึกเก็บไว้ซ่อน
         local _listWaitInput = RemoteGroupbox:AddInput(waitUniqueId, { 
             Default = "1", Numeric = true, Finished = false, Text = "Task.wait() Time", Placeholder = "Enter wait time...",
@@ -395,9 +397,7 @@ for _, instance in ipairs(ReplicatedStorage:GetDescendants()) do
             local amount = tonumber(savedAmounts[displayName]) or 1
             for i = 1, amount do instance:FireServer() end
         end })
-        
-        RemoteGroupbox:AddButton({ Text = "Add Float Button", Func = function() createOnScreenButton(instance, displayName) end })
-        
+
         -- บันทึกเก็บไว้ซ่อน
         local _listTglBtn = RemoteGroupbox:AddButton({ Text = "Add Float Toggle Button", Func = function() createOnScreenToggle(instance, displayName) end })
         table.insert(toggleFeaturesUI, _listTglBtn)
@@ -550,10 +550,25 @@ RunService.RenderStepped:Connect(function()
 end)
 
 -- ======================================================================
--- [ GOJO MOVESET LOGIC - MATCHING REMOTE STYLE ]
+-- [ IMPROVED REMOTE FINDER ]
 -- ======================================================================
+local function getRemoteByPath(pathTable)
+    local current = game:GetService("ReplicatedStorage")
+    for _, name in ipairs(pathTable) do
+        -- ใช้ WaitForChild สั้นๆ เพื่อให้แน่ใจว่า Remote โหลดทัน
+        local found = current:WaitForChild(name, 1) 
+        if not found then 
+            warn("❌ [Gojo Moveset] Could not find: " .. name .. " in " .. current:GetFullName())
+            return nil 
+        end
+        current = found
+    end
+    return current
+end
 
--- 1. สร้างปุ่ม Float สำหรับท่า Gojo (กดครั้งเดียว)
+-- ======================================================================
+-- [ GOJO MOVESET - FIXED LOGIC ]
+-- ======================================================================
 local function createGojoFloatButton(name, pathTable, inputId)
     local guiName = "CustomRemoteButtonsGui"
     local gui = CoreGui:FindFirstChild(guiName) or Instance.new("ScreenGui", CoreGui)
@@ -569,25 +584,29 @@ local function createGojoFloatButton(name, pathTable, inputId)
     btn.TextColor3 = Color3.fromRGB(255, 255, 255)
     btn.Font = Enum.Font.SourceSansBold
     btn.TextSize = 14
+    btn.Parent = gui
 
     Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
-    btn.Parent = gui
-    MakeDraggable(btn)
+    pcall(function() MakeDraggable(btn) end)
 
     btn.MouseButton1Click:Connect(function()
         local remote = getRemoteByPath(pathTable)
         if remote then
-            -- ดึงจำนวนจากช่อง Input ในหน้าเมนู
-            local amount = tonumber(Options[inputId].Value) or 1
-            for i = 1, amount do remote:FireServer() end
+            -- ป้องกัน Error กรณี Options หาย
+            local amount = 1
+            if Options[inputId] then
+                amount = tonumber(Options[inputId].Value) or 1
+            end
+            
+            print("🚀 Executing: " .. name .. " | Amount: " .. amount)
+            for i = 1, amount do 
+                task.spawn(function() remote:FireServer() end) 
+            end
         end
     end)
-    
-    -- คลิกขวาเพื่อลบปุ่ม
     btn.MouseButton2Click:Connect(function() btn:Destroy() end)
 end
 
--- 2. สร้างปุ่ม Float สำหรับท่า Gojo แบบ Toggle (วนลูป)
 local function createGojoFloatToggle(name, pathTable, waitId, inputId)
     local guiName = "CustomFloatTogglesGui"
     local gui = CoreGui:FindFirstChild(guiName) or Instance.new("ScreenGui", CoreGui)
@@ -603,45 +622,42 @@ local function createGojoFloatToggle(name, pathTable, waitId, inputId)
     btn.TextColor3 = Color3.fromRGB(255, 255, 255)
     btn.Font = Enum.Font.SourceSansBold
     btn.TextSize = 14
+    btn.Parent = gui
 
     Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
-    btn.Parent = gui
-    MakeDraggable(btn)
+    pcall(function() MakeDraggable(btn) end)
 
     local isToggled = false
     btn.MouseButton1Click:Connect(function()
         isToggled = not isToggled
-
-        -- เปลี่ยนสีตาม Logic: OFF = ดำ/ขาว, ON = ขาว/ดำ
         btn.Text = isToggled and ("  " .. name .. " [ON]  ") or ("  " .. name .. " [OFF]  ")
         btn.BackgroundColor3 = isToggled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(0, 0, 0)
         btn.TextColor3 = isToggled and Color3.fromRGB(0, 0, 0) or Color3.fromRGB(255, 255, 255)
 
         if isToggled then
+            print("🔄 Loop Started: " .. name)
             task.spawn(function()
                 while isToggled do
                     local remote = getRemoteByPath(pathTable)
                     if remote then
-                        local waitTime = tonumber(Options[waitId].Value) or 1
-                        local amount = tonumber(Options[inputId].Value) or 1
+                        local waitTime = (Options[waitId] and tonumber(Options[waitId].Value)) or 1
+                        local amount = (Options[inputId] and tonumber(Options[inputId].Value)) or 1
                         for i = 1, amount do remote:FireServer() end
                         task.wait(waitTime)
                     else
+                        isToggled = false
                         break
                     end
                 end
             end)
         end
     end)
-    
-    -- คลิกขวาเพื่อลบปุ่ม
     btn.MouseButton2Click:Connect(function() isToggled = false btn:Destroy() end)
 end
 
 -- ======================================================================
--- [ MOVESET TAB: GOJO MOVESET ]
+-- [ UI GENERATION ]
 -- ======================================================================
-
 local GojoGroupbox = Tabs.Moveset:AddLeftGroupbox("Gojo Moveset")
 
 local gojoMoves = {
@@ -664,24 +680,25 @@ for _, move in ipairs(gojoMoves) do
 
     GojoGroupbox:AddLabel("🎯 " .. move.Name)
     
-    GojoGroupbox:AddInput(inId, { Default = "1", Numeric = true, Text = "Amount to Fire", Placeholder = "1" })
+    local _amtInput = GojoGroupbox:AddInput(inId, { Default = "1", Numeric = true, Text = "Amount to Fire" })
 
-    -- ส่วนที่ซ่อนได้ (Wait Input)
-    local _wInput = GojoGroupbox:AddInput(waId, { Default = "1", Numeric = true, Text = "Wait Time", Placeholder = "1" })
+GojoGroupbox:AddButton({ Text = "Add Float Button", Func = function()
+        createGojoFloatButton(move.Name, move.Path, inId)
+    end })
+
+    -- ส่วนที่ซ่อนได้
+    local _wInput = GojoGroupbox:AddInput(waId, { Default = "1", Numeric = true, Text = "Task.wait() Time" })
     table.insert(toggleFeaturesUI, _wInput)
 
     GojoGroupbox:AddButton({ Text = "Execute", Func = function()
         local remote = getRemoteByPath(move.Path)
         if remote then
-            for i = 1, tonumber(Options[inId].Value) or 1 do remote:FireServer() end
+            local amount = tonumber(Options[inId].Value) or 1
+            print("⚡ Manual Execute: " .. move.Name .. " x" .. amount)
+            for i = 1, amount do remote:FireServer() end
         end
     end })
 
-    GojoGroupbox:AddButton({ Text = "Add Float Button", Func = function()
-        createGojoFloatButton(move.Name, move.Path, inId)
-    end })
-
-    -- ส่วนที่ซ่อนได้ (Toggle Button)
     local _tButton = GojoGroupbox:AddButton({ Text = "Add Float Toggle Button", Func = function()
         createGojoFloatToggle(move.Name, move.Path, waId, inId)
     end })
