@@ -1,0 +1,115 @@
+-- Gui to Lua (Modified with Modern ShiftLock Logic)
+-- Version: 3.2
+
+local CoreGui = game:GetService("CoreGui")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+local ShiftlockStarterGui = Instance.new("ScreenGui")
+local ImageButton = Instance.new("ImageButton")
+
+-- Properties:
+ShiftlockStarterGui.Name = "Shiftlock (StarterGui)"
+ShiftlockStarterGui.ZIndexBehavior =  Enum.ZIndexBehavior.Sibling
+ShiftlockStarterGui.ResetOnSpawn = false
+
+-- เอาใส่ CoreGui แบบปลอดภัย (กันบัคกรณีรันใน Studio)
+local success = pcall(function()
+    ShiftlockStarterGui.Parent = CoreGui
+end)
+if not success then
+    ShiftlockStarterGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+end
+
+ImageButton.Parent = ShiftlockStarterGui
+ImageButton.Active = true
+ImageButton.Draggable = true
+ImageButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+ImageButton.BackgroundTransparency = 1.000
+ImageButton.Position = UDim2.new(0.921914339, 0, 0.552375436, 0)
+ImageButton.Size = UDim2.new(0.0636147112, 0, 0.0661305636, 0)
+ImageButton.SizeConstraint = Enum.SizeConstraint.RelativeXX
+ImageButton.Image = "rbxasset://textures/ui/mouseLock_off@2x.png"
+
+-- Scripts:
+local function TLQOYN_fake_script() -- ImageButton.ShiftGUI 
+    local script = Instance.new('LocalScript', ImageButton)
+
+    local runservice = game:GetService("RunService")
+    local uis = game:GetService("UserInputService")
+    local button = script.Parent
+    
+    -- Visibility (ให้ปุ่มโชว์เฉพาะตอนเล่นบนมือถือ ตามสคริปต์ต้นฉบับ)
+    button.Visible = uis.TouchEnabled
+    
+    local states = {
+        OFF = "rbxasset://textures/ui/mouseLock_off@2x.png",
+        ON = "rbxasset://textures/ui/mouseLock_on@2x.png"
+    }
+    
+    -- === ระบบ ShiftLock ตัวใหม่ (นิ่งและเนียนกว่าเดิม) ===
+    local isShiftLockEnabled = false
+    local userGameSettings = nil
+    local OFFSET_VAL = 1.75 
+    
+    local function enforceOfficialSync()
+        if not isShiftLockEnabled then 
+            runservice:UnbindFromRenderStep("FinalNailSync")
+            return 
+        end
+
+        local char = LocalPlayer.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        local cam = workspace.CurrentCamera
+        if not hum then return end
+
+        if not userGameSettings then
+            pcall(function() userGameSettings = UserSettings():GetService("UserGameSettings") end)
+        end
+        if userGameSettings then
+            if userGameSettings.RotationType ~= Enum.RotationType.CameraRelative then
+                pcall(function() userGameSettings.RotationType = Enum.RotationType.CameraRelative end)
+            end
+        end
+
+        uis.MouseBehavior = Enum.MouseBehavior.LockCenter
+
+        local dist = (cam.Focus.Position - cam.CFrame.Position).Magnitude
+        
+        if dist > 0.90 then 
+            local rawCFrame = cam.CFrame
+            cam.CFrame = rawCFrame * CFrame.new(OFFSET_VAL, 0, 0)
+            cam.Focus = cam.CFrame * CFrame.new(0, 0, -dist)
+        end
+    end
+
+    local function ToggleShiftLock(enabled)
+        isShiftLockEnabled = enabled
+        button.Image = enabled and states.ON or states.OFF
+        
+        runservice:UnbindFromRenderStep("FinalNailSync")
+
+        if enabled then
+            runservice:BindToRenderStep("FinalNailSync", Enum.RenderPriority.Camera.Value + 1, enforceOfficialSync)
+        else
+            if userGameSettings then
+                pcall(function() userGameSettings.RotationType = Enum.RotationType.MovementRelative end)
+            end
+            uis.MouseBehavior = Enum.MouseBehavior.Default
+        end
+    end
+
+    button.MouseButton1Click:Connect(function()
+        ToggleShiftLock(not isShiftLockEnabled)
+    end)
+    
+    LocalPlayer.CharacterAdded:Connect(function(char)
+        runservice:UnbindFromRenderStep("FinalNailSync")
+        if isShiftLockEnabled then
+            task.wait(0)
+            runservice:BindToRenderStep("FinalNailSync", Enum.RenderPriority.Camera.Value + 1, enforceOfficialSync)
+        end
+    end)
+    -- ===============================================
+end
+coroutine.wrap(TLQOYN_fake_script)()
